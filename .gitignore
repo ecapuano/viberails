@@ -23,3 +23,8 @@ go.work.sum
 
 # env file
 .env
+
+# rust
+/viberails/target
+/viberails/Cargo.lock
+/target
