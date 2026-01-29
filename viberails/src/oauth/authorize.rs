@@ -5,6 +5,7 @@
 //! Google OAuth ourselves, we let Firebase manage the OAuth flow.
 
 use anyhow::{Context, Result, anyhow};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::TcpListener;
@@ -20,6 +21,7 @@ const FIREBASE_API_KEY: &str = "AIzaSyB5VyO6qS-XlnVD3zOIuEVNBD5JFn22_1w";
 /// Firebase Auth API endpoints
 const CREATE_AUTH_URI: &str = "https://identitytoolkit.googleapis.com/v1/accounts:createAuthUri";
 const SIGN_IN_WITH_IDP: &str = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp";
+const MFA_FINALIZE: &str = "https://identitytoolkit.googleapis.com/v2/accounts/mfaSignIn:finalize";
 
 /// OAuth callback timeout in seconds
 const OAUTH_CALLBACK_TIMEOUT: u64 = 300;
@@ -84,7 +86,7 @@ struct SignInWithIdpRequest {
     return_idp_credential: bool,
 }
 
-/// Response from Firebase signInWithIdp
+/// Response from Firebase signInWithIdp (success case - no MFA)
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SignInWithIdpResponse {
@@ -92,6 +94,54 @@ struct SignInWithIdpResponse {
     refresh_token: String,
     expires_in: String,
     local_id: Option<String>,
+}
+
+/// Response from Firebase signInWithIdp when MFA is required
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SignInWithIdpMfaResponse {
+    mfa_pending_credential: String,
+    mfa_info: Vec<MfaFactorInfo>,
+    local_id: Option<String>,
+}
+
+/// MFA factor information
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+struct MfaFactorInfo {
+    mfa_enrollment_id: String,
+    display_name: Option<String>,
+    #[serde(default)]
+    totp_info: Option<serde_json::Value>,
+    #[serde(default)]
+    phone_info: Option<String>,
+}
+
+/// Request payload for MFA finalize
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MfaFinalizeRequest {
+    mfa_pending_credential: String,
+    mfa_enrollment_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    totp_verification_info: Option<TotpVerificationInfo>,
+}
+
+/// TOTP verification info for MFA
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TotpVerificationInfo {
+    verification_code: String,
+}
+
+/// Response from MFA finalize
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MfaFinalizeResponse {
+    id_token: String,
+    refresh_token: String,
+    #[serde(default)]
+    expires_in: Option<String>,
 }
 
 /// Callback result from the OAuth server
@@ -165,7 +215,7 @@ pub fn authorize(config: AuthorizeConfig) -> Result<OAuthTokens> {
 
     match callback_result {
         CallbackResult::Success(callback_path) => {
-            // Extract query string and exchange for tokens
+            // Extract query string and exchange for Firebase tokens
             let query_string = extract_query_string(&callback_path)?;
             sign_in_with_idp(&redirect_uri, &query_string, &session_id, &config.provider)
         }
@@ -211,7 +261,6 @@ fn run_callback_server(server: Server, tx: Sender<CallbackResult>) {
 
         // Parse the callback URL
         if url.starts_with("/callback") {
-            // Check for authorization code or error
             if let Ok(parsed) = Url::parse(&format!("http://localhost{url}")) {
                 let params: HashMap<_, _> = parsed.query_pairs().collect();
 
@@ -248,7 +297,7 @@ fn run_callback_server(server: Server, tx: Sender<CallbackResult>) {
                 }
             }
 
-            // Invalid callback
+            // Invalid callback - no code or error
             let response = Response::from_string("Invalid OAuth callback").with_status_code(400);
             let _ = request.respond(response);
             let _ = tx.send(CallbackResult::Error("Invalid OAuth callback".to_string()));
@@ -265,6 +314,12 @@ fn run_callback_server(server: Server, tx: Sender<CallbackResult>) {
 fn create_auth_uri(provider: &OAuthProvider, redirect_uri: &str) -> Result<(String, String)> {
     let url = format!("{CREATE_AUTH_URI}?key={FIREBASE_API_KEY}");
 
+    info!(
+        "Creating auth URI for provider: {}",
+        provider.as_firebase_id()
+    );
+    debug!("redirect_uri: {}", redirect_uri);
+
     let payload = CreateAuthUriRequest {
         provider_id: provider.as_firebase_id().to_string(),
         continue_uri: redirect_uri.to_string(),
@@ -272,28 +327,47 @@ fn create_auth_uri(provider: &OAuthProvider, redirect_uri: &str) -> Result<(Stri
         oauth_scope: "openid email profile".to_string(),
     };
 
+    debug!(
+        "createAuthUri request payload: {:?}",
+        serde_json::to_string(&payload).unwrap_or_default()
+    );
+
     let response = minreq::post(&url)
         .with_json(&payload)?
         .with_timeout(10)
         .send()
         .context("Failed to create auth URI")?;
 
+    let response_body = response.as_str().unwrap_or("(non-utf8 response)");
+    debug!("createAuthUri response status: {}", response.status_code);
+    debug!("createAuthUri response body: {}", response_body);
+
     if response.status_code != 200 {
+        error!(
+            "createAuthUri failed: HTTP {} - {}",
+            response.status_code, response_body
+        );
         return Err(anyhow!(
-            "Failed to create auth URI: HTTP {}",
-            response.status_code
+            "Failed to create auth URI: HTTP {} - {}",
+            response.status_code,
+            response_body
         ));
     }
 
-    let data: CreateAuthUriResponse = response
-        .json()
-        .context("Failed to parse createAuthUri response")?;
+    let data: CreateAuthUriResponse =
+        serde_json::from_str(response_body).context("Failed to parse createAuthUri response")?;
+
+    info!("Got auth URI, session_id length: {}", data.session_id.len());
+    debug!("auth_uri: {}", data.auth_uri);
 
     Ok((data.session_id, data.auth_uri))
 }
 
 /// Extract query string from callback URL
 fn extract_query_string(callback_path: &str) -> Result<String> {
+    info!("Extracting query string from callback path");
+    debug!("callback_path: {}", callback_path);
+
     let parsed = Url::parse(&format!("http://localhost{callback_path}"))
         .context("Failed to parse callback URL")?;
 
@@ -301,14 +375,25 @@ fn extract_query_string(callback_path: &str) -> Result<String> {
         .query()
         .ok_or_else(|| anyhow!("No query parameters in callback"))?;
 
+    debug!("Extracted query string: {}", query);
+
     // Check for error in query
     let params: HashMap<_, _> = parsed.query_pairs().collect();
+    debug!("Query parameters: {:?}", params.keys().collect::<Vec<_>>());
+
     if let Some(error) = params.get("error") {
         let error_desc = params
             .get("error_description")
             .map(|s| s.to_string())
             .unwrap_or_else(|| error.to_string());
+        error!("OAuth error in callback: {}", error_desc);
         return Err(anyhow!("OAuth error: {error_desc}"));
+    }
+
+    if params.contains_key("code") {
+        info!("Found authorization code in callback");
+    } else {
+        warn!("No 'code' parameter found in callback query string");
     }
 
     Ok(query.to_string())
@@ -323,6 +408,13 @@ fn sign_in_with_idp(
 ) -> Result<OAuthTokens> {
     let url = format!("{SIGN_IN_WITH_IDP}?key={FIREBASE_API_KEY}");
 
+    info!("Exchanging OAuth callback with Firebase signInWithIdp");
+    debug!("request_uri: {}", request_uri);
+    debug!("query_string: {}", query_string);
+    debug!("session_id: {}", session_id);
+
+    // Pass the full query string from the OAuth callback as post_body
+    // Firebase will extract the authorization code and exchange it for tokens
     let payload = SignInWithIdpRequest {
         request_uri: request_uri.to_string(),
         post_body: query_string.to_string(),
@@ -331,22 +423,42 @@ fn sign_in_with_idp(
         return_idp_credential: true,
     };
 
+    debug!(
+        "signInWithIdp request payload: {:?}",
+        serde_json::to_string(&payload).unwrap_or_default()
+    );
+
     let response = minreq::post(&url)
         .with_json(&payload)?
         .with_timeout(10)
         .send()
         .context("Failed to sign in with IdP")?;
 
+    let response_body = response.as_str().unwrap_or("(non-utf8 response)");
+    debug!("signInWithIdp response status: {}", response.status_code);
+    debug!("signInWithIdp response body: {}", response_body);
+
     if response.status_code != 200 {
+        error!(
+            "signInWithIdp failed: HTTP {} - {}",
+            response.status_code, response_body
+        );
         return Err(anyhow!(
-            "Failed to sign in with IdP: HTTP {}",
-            response.status_code
+            "Failed to sign in with IdP: HTTP {} - {}",
+            response.status_code,
+            response_body
         ));
     }
 
-    let data: SignInWithIdpResponse = response
-        .json()
-        .context("Failed to parse signInWithIdp response")?;
+    // First, check if MFA is required by looking for mfaPendingCredential
+    if let Ok(mfa_response) = serde_json::from_str::<SignInWithIdpMfaResponse>(response_body) {
+        info!("MFA required, initiating MFA verification flow");
+        return handle_mfa_verification(&mfa_response, provider);
+    }
+
+    // No MFA required, parse as regular response
+    let data: SignInWithIdpResponse =
+        serde_json::from_str(response_body).context("Failed to parse signInWithIdp response")?;
 
     // Calculate expiry timestamp
     let expires_in: i64 = data.expires_in.parse().unwrap_or(3600);
@@ -362,6 +474,190 @@ fn sign_in_with_idp(
         expires_at,
         provider: provider.as_firebase_id().to_string(),
         uid: data.local_id,
+    })
+}
+
+/// Handle MFA verification flow
+fn handle_mfa_verification(
+    mfa_response: &SignInWithIdpMfaResponse,
+    provider: &OAuthProvider,
+) -> Result<OAuthTokens> {
+    println!();
+    println!("{}", "=".repeat(60));
+    println!("Multi-Factor Authentication Required");
+    println!("{}", "=".repeat(60));
+    println!();
+    println!("Your account has 2FA enabled. Please complete verification.");
+    println!();
+    println!("Enrolled authentication factor(s):");
+
+    for (i, factor) in mfa_response.mfa_info.iter().enumerate() {
+        let display_name = factor.display_name.as_deref().unwrap_or("Unnamed factor");
+        let factor_type = if factor.phone_info.is_some() {
+            "SMS"
+        } else if factor.totp_info.is_some() {
+            "Authenticator app (TOTP)"
+        } else {
+            "Unknown"
+        };
+        println!("  {}. {} ({})", i + 1, display_name, factor_type);
+    }
+    println!();
+
+    // Use the first factor (typically TOTP)
+    let factor = mfa_response
+        .mfa_info
+        .first()
+        .ok_or_else(|| anyhow!("No MFA factors found"))?;
+
+    // Only TOTP is supported for now
+    if factor.totp_info.is_none() {
+        return Err(anyhow!(
+            "Only TOTP (authenticator app) MFA is supported. SMS MFA is not yet implemented."
+        ));
+    }
+
+    // Prompt for verification code
+    let verification_code = prompt_mfa_code(factor)?;
+
+    // Finalize MFA
+    finalize_mfa(
+        &mfa_response.mfa_pending_credential,
+        &factor.mfa_enrollment_id,
+        &verification_code,
+        provider,
+        mfa_response.local_id.as_deref(),
+    )
+}
+
+/// Prompt user for MFA verification code
+fn prompt_mfa_code(factor: &MfaFactorInfo) -> Result<String> {
+    let factor_name = factor
+        .display_name
+        .as_deref()
+        .unwrap_or("your authenticator");
+
+    let prompt = format!("Enter the 6-digit code from {}: ", factor_name);
+
+    for attempt in 0..3 {
+        if attempt > 0 {
+            println!("Please try again.");
+        }
+
+        print!("{}", prompt);
+        std::io::Write::flush(&mut std::io::stdout())?;
+
+        let mut code = String::new();
+        std::io::stdin()
+            .read_line(&mut code)
+            .context("Failed to read verification code")?;
+
+        let code = code.trim();
+
+        if code.is_empty() {
+            println!("Error: Code cannot be empty.");
+            continue;
+        }
+
+        if !code.chars().all(|c| c.is_ascii_digit()) {
+            println!("Error: Code must contain only digits.");
+            continue;
+        }
+
+        if code.len() != 6 {
+            println!(
+                "Error: Code must be exactly 6 digits (you entered {}).",
+                code.len()
+            );
+            continue;
+        }
+
+        return Ok(code.to_string());
+    }
+
+    Err(anyhow!("Maximum attempts (3) exceeded"))
+}
+
+/// Finalize MFA verification and get tokens
+fn finalize_mfa(
+    mfa_pending_credential: &str,
+    mfa_enrollment_id: &str,
+    verification_code: &str,
+    provider: &OAuthProvider,
+    local_id: Option<&str>,
+) -> Result<OAuthTokens> {
+    let url = format!("{MFA_FINALIZE}?key={FIREBASE_API_KEY}");
+
+    info!("Finalizing MFA verification");
+
+    let payload = MfaFinalizeRequest {
+        mfa_pending_credential: mfa_pending_credential.to_string(),
+        mfa_enrollment_id: mfa_enrollment_id.to_string(),
+        totp_verification_info: Some(TotpVerificationInfo {
+            verification_code: verification_code.to_string(),
+        }),
+    };
+
+    println!("Verifying code...");
+
+    let response = minreq::post(&url)
+        .with_json(&payload)?
+        .with_timeout(15)
+        .send()
+        .context("Failed to finalize MFA")?;
+
+    let response_body = response.as_str().unwrap_or("(non-utf8 response)");
+    info!("MFA finalize response status: {}", response.status_code);
+    info!("MFA finalize response body: {}", response_body);
+
+    if response.status_code != 200 {
+        // Parse error message
+        let error_msg =
+            if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(response_body) {
+                error_json["error"]["message"]
+                    .as_str()
+                    .unwrap_or("Unknown error")
+                    .to_string()
+            } else {
+                response_body.to_string()
+            };
+
+        if error_msg.contains("INVALID_CODE") || error_msg.contains("CODE_EXPIRED") {
+            return Err(anyhow!("Invalid or expired verification code."));
+        } else if error_msg.contains("INVALID_MFA_PENDING_CREDENTIAL") {
+            return Err(anyhow!("MFA session expired. Please try logging in again."));
+        } else if error_msg.contains("TOO_MANY_ATTEMPTS") {
+            return Err(anyhow!(
+                "Too many failed attempts. Please try logging in again."
+            ));
+        }
+
+        return Err(anyhow!("MFA verification failed: {}", error_msg));
+    }
+
+    let data: MfaFinalizeResponse =
+        serde_json::from_str(response_body).context("Failed to parse MFA finalize response")?;
+
+    println!("Verification successful!");
+
+    // Calculate expiry timestamp (default to 1 hour if not provided)
+    let expires_in: i64 = data
+        .expires_in
+        .as_ref()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(3600);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let expires_at = now.saturating_add(expires_in);
+
+    Ok(OAuthTokens {
+        id_token: data.id_token,
+        refresh_token: data.refresh_token,
+        expires_at,
+        provider: provider.as_firebase_id().to_string(),
+        uid: local_id.map(String::from),
     })
 }
 
