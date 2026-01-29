@@ -3,9 +3,10 @@ mod common;
 mod config;
 mod hooks;
 mod logging;
+mod oauth;
 mod providers;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 use crate::{
@@ -13,6 +14,7 @@ use crate::{
     config::{ConfigureArgs, configure, show_configuration},
     hooks::{hook, install, list, uninstall},
     logging::Logging,
+    oauth::{AuthorizeConfig, authorize},
 };
 
 #[derive(Parser)]
@@ -28,8 +30,8 @@ pub struct UserArgs {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Auth
-    Auth,
+    /// Login via OAuth
+    Login,
 
     /// Configure
     Configure(Box<ConfigureArgs>),
@@ -67,7 +69,7 @@ fn main() -> Result<()> {
         Some(Command::List) => list(),
         Some(Command::Configure(a)) => configure(&a),
         Some(Command::ShowConfiguration) => show_configuration(),
-        Some(Command::Auth) => bail!("Not Implemented"),
+        Some(Command::Login) => authorize(AuthorizeConfig::default()).map(|_| ()),
         _ => hook(),
     }
 }

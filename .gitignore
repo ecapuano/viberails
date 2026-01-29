@@ -27,4 +27,5 @@ go.work.sum
 # rust
 /viberails/target
 /viberails/Cargo.lock
+/viberails/python-limacharlie
 /target
