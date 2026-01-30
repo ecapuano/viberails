@@ -48,12 +48,12 @@ pub struct UserConfig {
 #[derive(Default, Serialize, Deserialize, Tabled)]
 pub struct LcOrg {
     pub oid: String,
-    pub install_key: String,
+    pub jwt: String,
 }
 
 impl LcOrg {
     pub fn authorized(&self) -> bool {
-        !self.install_key.is_empty() && !self.oid.is_empty()
+        !self.jwt.is_empty() && !self.oid.is_empty()
     }
 }
 

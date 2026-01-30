@@ -4,7 +4,8 @@ use inquire::{Select, Text};
 use log::info;
 
 use crate::{
-    cloud::lc_api::{get_jwt, get_jwt_firebase, org_available, org_create},
+    cloud::lc_api::{get_jwt_firebase, org_available, org_create},
+    config::{Config, LcOrg},
     oauth::{Location, LoginArgs, login},
 };
 
@@ -96,6 +97,7 @@ pub fn authorize(args: &LoginArgs) -> Result<()> {
         .context("Unable to create organization")?;
     info!("Org created oid={oid}");
 
+    /*
     //
     // get the final token
     //
@@ -104,10 +106,13 @@ pub fn authorize(args: &LoginArgs) -> Result<()> {
     info!("received token");
 
     println!("token: {jwt}");
+    */
 
     //
     // save the token to the config file
     //
-
-    Ok(())
+    let mut config = Config::load()?;
+    let org = LcOrg { oid, jwt };
+    config.org = org;
+    config.save()
 }

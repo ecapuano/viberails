@@ -1,6 +1,6 @@
 use std::time::SystemTime;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use derive_more::Display;
 use log::{error, warn};
 use serde::{Deserialize, Serialize};
@@ -55,6 +55,13 @@ fn find_session_id(data: &Value) -> Option<String> {
 
 impl<'a> CloudRequestMeta<'a> {
     pub fn new(config: &'a Config) -> Result<Self> {
+        //
+        // bail if we're not actually authorized
+        //
+        if !config.org.authorized() {
+            bail!("Not yet authorized")
+        }
+
         let ts = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .context("Unable to get current timestamp")?

@@ -47,27 +47,6 @@ where
     Ok(resp.jwt)
 }
 
-pub fn get_jwt<S, K>(oid: S, secret: K) -> Result<String>
-where
-    S: AsRef<str>,
-    K: AsRef<str>,
-{
-    let body = format!("oid={}&secret={}", oid.as_ref(), secret.as_ref());
-
-    let res = minreq::post(LC_JWT_URL)
-        .with_timeout(REQUEST_TIMEOUT_SECS)
-        .with_header("Content-Type", "application/x-www-form-urlencoded")
-        .with_body(body)
-        .send()
-        .with_context(|| format!("Failed to connect to authorization server at {LC_JWT_URL}"))?;
-
-    let resp: LcJwtResponse = res
-        .json()
-        .context("Jwt endpoint returned invalid JSON response")?;
-
-    Ok(resp.jwt)
-}
-
 pub fn org_available<T, S>(token: T, name: S) -> Result<bool>
 where
     T: AsRef<str>,
