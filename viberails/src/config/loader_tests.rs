@@ -48,7 +48,8 @@ fn test_config_load_existing_valid() {
         "install_id": "test-install-id-123",
         "org": {
             "oid": "",
-            "jwt": ""
+            "jwt": "",
+            "name": ""
         }
     }"#;
 
