@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::config::Config;
+use crate::{cloud::REQUEST_TIMEOUT_SECS, config::Config};
 
 #[derive(Display)]
 pub enum CloudVerdict {
@@ -98,7 +98,7 @@ impl<'a> CloudQuery<'a> {
         let req = CloudRequest::new(self.config, data)?;
 
         let ret = minreq::post(&self.config.user.notification_url)
-            .with_timeout(10)
+            .with_timeout(REQUEST_TIMEOUT_SECS)
             .with_json(&req)
             .context("Failed to serialize notification request")?
             .send();
@@ -117,7 +117,7 @@ impl<'a> CloudQuery<'a> {
         let req = CloudRequest::new(self.config, data)?;
 
         let res = minreq::post(&self.config.user.authorize_url)
-            .with_timeout(10)
+            .with_timeout(REQUEST_TIMEOUT_SECS)
             .with_json(&req)
             .context("Failed to serialize authorization request")?
             .send()
