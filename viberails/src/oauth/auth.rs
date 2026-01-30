@@ -251,7 +251,7 @@ pub fn authorize(config: &LoginArgs) -> Result<OAuthTokens> {
     let redirect_uri_clone = redirect_uri.clone();
     let provider = config.provider;
     let server_handle = thread::spawn(move || {
-        run_callback_server(server, tx, redirect_uri_clone, provider, session_id);
+        run_callback_server(&server, tx, redirect_uri_clone, provider, session_id);
     });
 
     // Open browser or print URL
@@ -303,7 +303,7 @@ fn find_free_port() -> Result<u16> {
 /// 3. MFA verification form (if MFA is required)
 /// 4. MFA code submission and verification
 fn run_callback_server(
-    server: Server,
+    server: &Server,
     tx: Sender<CallbackResult>,
     redirect_uri: String,
     provider: OAuthProvider,

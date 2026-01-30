@@ -9,11 +9,13 @@ use serde_json::Value;
 #[include = "consts.json"]
 struct Assets;
 
+#[allow(clippy::expect_used)]
 static DEFAULTS: LazyLock<Value> = LazyLock::new(|| {
     let file = Assets::get("consts.json").expect("consts.json embedded");
     serde_json::from_slice(&file.data).expect("valid consts.json")
 });
 
+#[allow(clippy::expect_used)]
 pub fn get_embedded_default(name: &'static str) -> String {
     DEFAULTS
         .get(name)

@@ -149,7 +149,7 @@ impl<'a> CloudQuery<'a> {
 
         let url = format!("{}/{}/test-dr", config.user.hook_url, config.org.oid);
 
-        info!("Using url={}", url);
+        info!("Using url={url}");
 
         Ok(Self {
             config,

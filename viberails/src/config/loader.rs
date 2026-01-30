@@ -27,6 +27,7 @@ pub struct ConfigureArgs {
     fail_open: bool,
 }
 
+#[allow(clippy::expect_used)]
 fn default_hook_url() -> Url {
     get_embedded_default("default_hook_url")
         .parse()
@@ -94,7 +95,7 @@ pub struct Config {
 
 impl Config {
     pub(crate) fn load_existing(config_file: &Path) -> Result<Self> {
-        let config_string = fs::read_to_string(&config_file)
+        let config_string = fs::read_to_string(config_file)
             .with_context(|| format!("Unable to read {}", config_file.display()))?;
 
         let config: Config = serde_json::from_str(&config_string)
