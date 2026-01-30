@@ -25,6 +25,7 @@ jobs:
               uses: dtolnay/rust-toolchain@stable
 
             - name: Run tests
+              working-directory: viberails
               run: cargo test --all-features
 
     build:
@@ -65,6 +66,7 @@ jobs:
                   sudo apt-get install -y gcc-aarch64-linux-gnu
 
             - name: Build
+              working-directory: viberails
               run: cargo build --release --target ${{ matrix.target }}
               env:
                   CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
@@ -72,12 +74,12 @@ jobs:
             - name: Rename binary (Unix)
               if: runner.os != 'Windows'
               run: |
-                  mv target/${{ matrix.target }}/release/viberails ${{ matrix.artifact }}
+                  mv viberails/target/${{ matrix.target }}/release/viberails ${{ matrix.artifact }}
 
             - name: Rename binary (Windows)
               if: runner.os == 'Windows'
               run: |
-                  mv target/${{ matrix.target }}/release/viberails.exe ${{ matrix.artifact }}.exe
+                  mv viberails/target/${{ matrix.target }}/release/viberails.exe ${{ matrix.artifact }}.exe
 
             - name: Upload artifact (Unix)
               if: runner.os != 'Windows'
