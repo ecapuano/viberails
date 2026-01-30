@@ -2,6 +2,8 @@ use std::io::Write;
 
 use tempfile::NamedTempFile;
 
+use crate::config::loader::LcOrg;
+
 use super::loader::{Config, UserConfig};
 
 #[test]
@@ -103,6 +105,7 @@ fn test_config_serialization_roundtrip() {
             .fail_open(true)
             .build(),
         install_id: "roundtrip-test-id".to_string(),
+        org: LcOrg::default(),
     };
 
     let json = serde_json::to_string_pretty(&config).unwrap();

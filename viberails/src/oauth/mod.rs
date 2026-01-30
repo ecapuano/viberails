@@ -1,4 +1,6 @@
-pub mod authorize;
+pub mod login;
 
 #[allow(unused_imports)] // OAuthTokens is part of the public API
-pub use authorize::{AuthorizeConfig, OAuthProvider, OAuthTokens, authorize};
+pub use login::{LoginArgs, OAuthProvider, OAuthTokens, login};
+
+pub mod auth;

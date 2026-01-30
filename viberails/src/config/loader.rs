@@ -45,6 +45,18 @@ pub struct UserConfig {
     pub fail_open: bool,
 }
 
+#[derive(Default, Serialize, Deserialize, Tabled)]
+pub struct LcOrg {
+    pub oid: String,
+    pub install_key: String,
+}
+
+impl LcOrg {
+    pub fn authorized(&self) -> bool {
+        !self.install_key.is_empty() && !self.oid.is_empty()
+    }
+}
+
 impl Default for UserConfig {
     fn default() -> Self {
         Self {
@@ -61,6 +73,8 @@ pub struct Config {
     #[tabled(inline)]
     pub user: UserConfig,
     pub install_id: String,
+    #[tabled(inline)]
+    pub org: LcOrg,
 }
 
 impl Config {
@@ -77,10 +91,15 @@ impl Config {
     fn create_new() -> Self {
         let user = UserConfig::default();
         let install_id = Uuid::new_v4().to_string();
+        let org = LcOrg::default();
 
         info!("install id: {install_id}");
 
-        Self { user, install_id }
+        Self {
+            user,
+            install_id,
+            org,
+        }
     }
 
     pub fn save(&self) -> Result<()> {

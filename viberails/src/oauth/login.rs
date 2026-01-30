@@ -5,7 +5,7 @@
 //! Google OAuth ourselves, we let Firebase manage the OAuth flow.
 
 use anyhow::{Context, Result, anyhow};
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use rust_embed::Embed;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -169,10 +169,14 @@ struct MfaSession {
     local_id: Option<String>,
 }
 
-/// Configuration for the authorize flow
-#[derive(Debug, Clone, Default)]
-pub struct AuthorizeConfig {
+#[derive(clap::Args)]
+pub struct LoginArgs {
+    /// OAuth provider to use
+    #[arg(long, short, default_value = "google")]
     pub provider: OAuthProvider,
+
+    /// Print the URL instead of opening a browser
+    #[arg(long)]
     pub no_browser: bool,
 }
 
@@ -191,7 +195,7 @@ pub struct AuthorizeConfig {
 /// # Returns
 /// * `Ok(OAuthTokens)` - The OAuth tokens on success
 /// * `Err` - An error if authorization fails
-pub fn authorize(config: AuthorizeConfig) -> Result<OAuthTokens> {
+pub fn login(config: &LoginArgs) -> Result<OAuthTokens> {
     // Find a free port and start the callback server
     let port = find_free_port()?;
     let redirect_uri = format!("http://localhost:{port}/callback");
@@ -459,9 +463,6 @@ fn exchange_code_for_tokens(
     let url = format!("{SIGN_IN_WITH_IDP}?key={FIREBASE_API_KEY}");
 
     info!("Exchanging OAuth callback with Firebase signInWithIdp");
-    debug!("request_uri: {}", request_uri);
-    debug!("query_string: {}", query_string);
-    debug!("session_id: {}", session_id);
 
     let payload = SignInWithIdpRequest {
         request_uri: request_uri.to_string(),
@@ -471,11 +472,6 @@ fn exchange_code_for_tokens(
         return_idp_credential: true,
     };
 
-    debug!(
-        "signInWithIdp request payload: {:?}",
-        serde_json::to_string(&payload).unwrap_or_default()
-    );
-
     let response = minreq::post(&url)
         .with_json(&payload)?
         .with_timeout(10)
@@ -483,18 +479,12 @@ fn exchange_code_for_tokens(
         .context("Failed to sign in with IdP")?;
 
     let response_body = response.as_str().unwrap_or("(non-utf8 response)");
-    debug!("signInWithIdp response status: {}", response.status_code);
-    debug!("signInWithIdp response body: {}", response_body);
 
     if response.status_code != 200 {
-        error!(
-            "signInWithIdp failed: HTTP {} - {}",
-            response.status_code, response_body
-        );
+        error!("signInWithIdp failed: HTTP {}", response.status_code);
         return Err(anyhow!(
-            "Failed to sign in with IdP: HTTP {} - {}",
-            response.status_code,
-            response_body
+            "Failed to sign in with IdP: HTTP {}",
+            response.status_code
         ));
     }
 
@@ -554,7 +544,6 @@ fn create_auth_uri(provider: &OAuthProvider, redirect_uri: &str) -> Result<(Stri
         "Creating auth URI for provider: {}",
         provider.as_firebase_id()
     );
-    debug!("redirect_uri: {}", redirect_uri);
 
     let payload = CreateAuthUriRequest {
         provider_id: provider.as_firebase_id().to_string(),
@@ -563,11 +552,6 @@ fn create_auth_uri(provider: &OAuthProvider, redirect_uri: &str) -> Result<(Stri
         oauth_scope: "openid email profile".to_string(),
     };
 
-    debug!(
-        "createAuthUri request payload: {:?}",
-        serde_json::to_string(&payload).unwrap_or_default()
-    );
-
     let response = minreq::post(&url)
         .with_json(&payload)?
         .with_timeout(10)
@@ -575,26 +559,19 @@ fn create_auth_uri(provider: &OAuthProvider, redirect_uri: &str) -> Result<(Stri
         .context("Failed to create auth URI")?;
 
     let response_body = response.as_str().unwrap_or("(non-utf8 response)");
-    debug!("createAuthUri response status: {}", response.status_code);
-    debug!("createAuthUri response body: {}", response_body);
 
     if response.status_code != 200 {
-        error!(
-            "createAuthUri failed: HTTP {} - {}",
-            response.status_code, response_body
-        );
+        error!("createAuthUri failed: HTTP {}", response.status_code);
         return Err(anyhow!(
-            "Failed to create auth URI: HTTP {} - {}",
-            response.status_code,
-            response_body
+            "Failed to create auth URI: HTTP {}",
+            response.status_code
         ));
     }
 
     let data: CreateAuthUriResponse =
         serde_json::from_str(response_body).context("Failed to parse createAuthUri response")?;
 
-    info!("Got auth URI, session_id length: {}", data.session_id.len());
-    debug!("auth_uri: {}", data.auth_uri);
+    info!("Got auth URI from Firebase");
 
     Ok((data.session_id, data.auth_uri))
 }
@@ -626,8 +603,6 @@ fn finalize_mfa(
         .context("Failed to finalize MFA")?;
 
     let response_body = response.as_str().unwrap_or("(non-utf8 response)");
-    info!("MFA finalize response status: {}", response.status_code);
-    info!("MFA finalize response body: {}", response_body);
 
     if response.status_code != 200 {
         // Parse error message

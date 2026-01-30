@@ -3,7 +3,7 @@ use std::{
     time::Instant,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use derive_more::Display;
 use log::{error, info, warn};
 use serde::Serialize;
@@ -198,6 +198,11 @@ pub fn hook() -> Result<()> {
     info!("{PROJECT_NAME} is starting");
 
     let config = Config::load()?;
+
+    if !config.org.authorized() {
+        bail!("not authorized");
+    }
+
     let mut hook = Hook::new(&config);
 
     hook.io_loop()
