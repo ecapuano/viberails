@@ -27,6 +27,57 @@ struct OrgCreateData {
     oid: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct OrgUrlsResponse {
+    url: OrgUrls,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OrgUrls {
+    pub hooks: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct InstallationKeyResponse {
+    iid: String,
+}
+
+#[derive(Serialize)]
+struct WebhookAdapterData<'a> {
+    sensor_type: &'a str,
+    webhook: WebhookConfig<'a>,
+}
+
+#[derive(Serialize)]
+struct WebhookConfig<'a> {
+    secret: &'a str,
+    client_options: ClientOptions<'a>,
+}
+
+#[derive(Serialize)]
+struct ClientOptions<'a> {
+    hostname: &'a str,
+    identity: Identity<'a>,
+    platform: &'a str,
+    sensor_seed_key: &'a str,
+}
+
+#[derive(Serialize)]
+struct Identity<'a> {
+    oid: &'a str,
+    installation_key: &'a str,
+}
+
+#[derive(Builder)]
+pub struct WebhookAdapter<'a> {
+    token: &'a str,
+    oid: &'a str,
+    name: &'a str,
+    secret: &'a str,
+    installation_key: &'a str,
+    sensor_seed_key: &'a str,
+}
+
 pub fn get_jwt_firebase<S, K>(oid: S, fb_auth: K) -> Result<String>
 where
     S: AsRef<str>,
@@ -93,16 +144,6 @@ where
     Ok(resp.data.oid)
 }
 
-#[derive(Debug, Deserialize)]
-struct OrgUrlsResponse {
-    url: OrgUrls,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct OrgUrls {
-    pub hooks: Option<String>,
-}
-
 pub fn get_org_urls<O>(oid: O) -> Result<OrgUrls>
 where
     O: AsRef<str>,
@@ -128,11 +169,6 @@ where
         .context("Unable to deserialize org URLs response")?;
 
     Ok(resp.url)
-}
-
-#[derive(Debug, Deserialize)]
-struct InstallationKeyResponse {
-    iid: String,
 }
 
 pub fn create_installation_key<T, O>(token: T, oid: O, desc: &str) -> Result<String>
@@ -167,42 +203,6 @@ where
         .context("Unable to deserialize installation key response")?;
 
     Ok(resp.iid)
-}
-
-#[derive(Serialize)]
-struct WebhookAdapterData<'a> {
-    sensor_type: &'a str,
-    webhook: WebhookConfig<'a>,
-}
-
-#[derive(Serialize)]
-struct WebhookConfig<'a> {
-    secret: &'a str,
-    client_options: ClientOptions<'a>,
-}
-
-#[derive(Serialize)]
-struct ClientOptions<'a> {
-    hostname: &'a str,
-    identity: Identity<'a>,
-    platform: &'a str,
-    sensor_seed_key: &'a str,
-}
-
-#[derive(Serialize)]
-struct Identity<'a> {
-    oid: &'a str,
-    installation_key: &'a str,
-}
-
-#[derive(Builder)]
-pub struct WebhookAdapter<'a> {
-    token: &'a str,
-    oid: &'a str,
-    name: &'a str,
-    secret: &'a str,
-    installation_key: &'a str,
-    sensor_seed_key: &'a str,
 }
 
 impl WebhookAdapter<'_> {

@@ -39,7 +39,13 @@ struct CloudRequest<'a> {
     notify: Option<Value>,
 }
 
-fn find_session_id(data: &Value) -> Option<String> {
+pub struct CloudQuery<'a> {
+    config: &'a Config,
+    bearer: String,
+    url: String,
+}
+
+fn mine_session_id(data: &Value) -> Option<String> {
     //
     // This is to be accomodating for various providers and or versions
     // so we're mining for some kind of session id
@@ -89,12 +95,6 @@ impl<'a> CloudRequestMeta<'a> {
     }
 }
 
-pub struct CloudQuery<'a> {
-    config: &'a Config,
-    bearer: String,
-    url: String,
-}
-
 impl<'a> CloudQuery<'a> {
     pub fn new(config: &'a Config) -> Result<Self> {
         //
@@ -121,7 +121,7 @@ impl<'a> CloudQuery<'a> {
     }
 
     pub fn notify(&self, data: Value) -> Result<()> {
-        let session_id = find_session_id(&data);
+        let session_id = mine_session_id(&data);
 
         let meta_data = CloudRequestMeta::new(self.config, session_id)?;
         let req = CloudRequest {
@@ -145,7 +145,7 @@ impl<'a> CloudQuery<'a> {
     }
 
     pub fn authorize(&self, data: Value) -> Result<CloudVerdict> {
-        let session_id = find_session_id(&data);
+        let session_id = mine_session_id(&data);
 
         let meta_data = CloudRequestMeta::new(self.config, session_id)?;
 

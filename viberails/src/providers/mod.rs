@@ -23,5 +23,4 @@ pub trait LLmProviderTrait {
     fn install(&self, hook_type: &str) -> Result<()>;
     fn uninstall(&self, hook_type: &str) -> Result<()>;
     fn list(&self) -> Result<Vec<HookEntry>>;
-    //fn config_file(&self) -> &Path;
 }
