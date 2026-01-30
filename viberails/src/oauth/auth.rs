@@ -203,7 +203,7 @@ pub fn authorize(config: &LoginArgs) -> Result<OAuthTokens> {
     println!("Using OAuth provider: {}", config.provider.as_firebase_id());
 
     // Get auth URI from Firebase first (we need session_id for the callback server)
-    let (session_id, auth_uri) = create_auth_uri(&config.provider, &redirect_uri)?;
+    let (session_id, auth_uri) = create_auth_uri(config.provider, &redirect_uri)?;
 
     // Start the callback server in a separate thread
     let (tx, rx): (Sender<CallbackResult>, Receiver<CallbackResult>) = mpsc::channel();
@@ -332,7 +332,7 @@ fn run_callback_server(
                     &session.mfa_pending_credential,
                     &session.mfa_enrollment_id,
                     &code,
-                    &session.provider,
+                    session.provider,
                     session.local_id.as_deref(),
                 ) {
                     Ok(tokens) => {
@@ -368,8 +368,7 @@ fn run_callback_server(
                 if let Some(error) = params.get("error") {
                     let error_desc = params
                         .get("error_description")
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| error.to_string());
+                        .map_or_else(|| error.to_string(), ToString::to_string);
 
                     let _ = request.respond(html_response(200, &error_html(&error_desc)));
                     let _ = tx.send(CallbackResult::Error(error_desc));
@@ -382,10 +381,10 @@ fn run_callback_server(
 
                     // Exchange the authorization code for tokens
                     match exchange_code_for_tokens(
-                        &redirect_uri,
+                        redirect_uri,
                         &query_string,
-                        &session_id,
-                        &provider,
+                        session_id,
+                        provider,
                     ) {
                         Ok(ExchangeResult::Success(tokens)) => {
                             // No MFA required - show success and return tokens
@@ -405,7 +404,7 @@ fn run_callback_server(
                         }
                         Err(e) => {
                             let error_msg = e.to_string();
-                            error!("Token exchange failed: {}", error_msg);
+                            error!("Token exchange failed: {error_msg}");
                             let _ = request.respond(html_response(200, &error_html(&error_msg)));
                             let _ = tx.send(CallbackResult::Error(error_msg));
                             return;
@@ -426,6 +425,7 @@ fn run_callback_server(
 }
 
 /// Create a plain text HTTP response
+#[allow(clippy::expect_used)]
 fn text_response(status: u16, body: &str) -> Response<std::io::Cursor<Vec<u8>>> {
     Response::from_string(body)
         .with_status_code(status)
@@ -436,6 +436,7 @@ fn text_response(status: u16, body: &str) -> Response<std::io::Cursor<Vec<u8>>> 
 }
 
 /// Create an HTML HTTP response
+#[allow(clippy::expect_used)]
 fn html_response(status: u16, html: &str) -> Response<std::io::Cursor<Vec<u8>>> {
     Response::from_string(html)
         .with_status_code(status)
@@ -458,7 +459,7 @@ fn exchange_code_for_tokens(
     request_uri: &str,
     query_string: &str,
     session_id: &str,
-    provider: &OAuthProvider,
+    provider: OAuthProvider,
 ) -> Result<ExchangeResult> {
     let api_key = get_embedded_default("firebase_api_key");
     let url = format!("{SIGN_IN_WITH_IDP}?key={api_key}");
@@ -509,7 +510,7 @@ fn exchange_code_for_tokens(
                 .display_name
                 .clone()
                 .unwrap_or_else(|| "your authenticator app".to_string()),
-            provider: *provider,
+            provider,
             local_id: mfa_response.local_id,
         };
 
@@ -522,6 +523,7 @@ fn exchange_code_for_tokens(
 
     // Calculate expiry timestamp
     let expires_in: i64 = data.expires_in.parse().unwrap_or(3600);
+    #[allow(clippy::cast_possible_wrap)]
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -538,7 +540,7 @@ fn exchange_code_for_tokens(
 }
 
 /// Request auth URI from Firebase
-fn create_auth_uri(provider: &OAuthProvider, redirect_uri: &str) -> Result<(String, String)> {
+fn create_auth_uri(provider: OAuthProvider, redirect_uri: &str) -> Result<(String, String)> {
     let api_key = get_embedded_default("firebase_api_key");
     let url = format!("{CREATE_AUTH_URI}?key={api_key}");
 
@@ -583,7 +585,7 @@ fn finalize_mfa(
     mfa_pending_credential: &str,
     mfa_enrollment_id: &str,
     verification_code: &str,
-    provider: &OAuthProvider,
+    provider: OAuthProvider,
     local_id: Option<&str>,
 ) -> Result<OAuthTokens> {
     let api_key = get_embedded_default("firebase_api_key");
@@ -611,8 +613,10 @@ fn finalize_mfa(
         // Parse error message
         let error_msg =
             if let Ok(error_json) = serde_json::from_str::<serde_json::Value>(response_body) {
-                error_json["error"]["message"]
-                    .as_str()
+                error_json
+                    .get("error")
+                    .and_then(|e| e.get("message"))
+                    .and_then(|m| m.as_str())
                     .unwrap_or("Unknown error")
                     .to_string()
             } else {
@@ -629,7 +633,7 @@ fn finalize_mfa(
             ));
         }
 
-        return Err(anyhow!("MFA verification failed: {}", error_msg));
+        return Err(anyhow!("MFA verification failed: {error_msg}"));
     }
 
     let data: MfaFinalizeResponse =
@@ -643,6 +647,7 @@ fn finalize_mfa(
         .as_ref()
         .and_then(|s| s.parse().ok())
         .unwrap_or(3600);
+    #[allow(clippy::cast_possible_wrap)]
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -689,21 +694,24 @@ fn open_browser(url: &str) -> Result<()> {
 
 /// Generate success HTML page
 fn success_html() -> String {
-    OAuthAssets::get("success.html")
-        .map(|file| String::from_utf8_lossy(&file.data).into_owned())
-        .unwrap_or_else(|| "Authentication successful! You can close this window.".to_string())
+    OAuthAssets::get("success.html").map_or_else(
+        || "Authentication successful! You can close this window.".to_string(),
+        |file| String::from_utf8_lossy(&file.data).into_owned(),
+    )
 }
 
 /// Generate MFA HTML page with TOTP input form
 fn mfa_html(factor_name: &str) -> String {
-    OAuthAssets::get("mfa.html")
-        .map(|file| String::from_utf8_lossy(&file.data).replace("{{FACTOR_NAME}}", factor_name))
-        .unwrap_or_else(|| format!("MFA required. Enter the 6-digit code from {}.", factor_name))
+    OAuthAssets::get("mfa.html").map_or_else(
+        || format!("MFA required. Enter the 6-digit code from {factor_name}."),
+        |file| String::from_utf8_lossy(&file.data).replace("{{FACTOR_NAME}}", factor_name),
+    )
 }
 
 /// Generate error HTML page
 fn error_html(error_msg: &str) -> String {
-    OAuthAssets::get("error.html")
-        .map(|file| String::from_utf8_lossy(&file.data).replace("{{ERROR_MESSAGE}}", error_msg))
-        .unwrap_or_else(|| format!("Authentication failed: {error_msg}"))
+    OAuthAssets::get("error.html").map_or_else(
+        || format!("Authentication failed: {error_msg}"),
+        |file| String::from_utf8_lossy(&file.data).replace("{{ERROR_MESSAGE}}", error_msg),
+    )
 }

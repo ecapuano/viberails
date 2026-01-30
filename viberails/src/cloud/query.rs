@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::{cloud::REQUEST_TIMEOUT_SECS, config::Config};
+use crate::{cloud::REQUEST_TIMEOUT_SECS, common::display_authorize_help, config::Config};
 
 #[derive(Display)]
 pub enum CloudVerdict {
@@ -101,6 +101,7 @@ impl<'a> CloudQuery<'a> {
         // bail if we're not actually yet authorized
         //
         if !config.org.authorized() {
+            display_authorize_help();
             bail!("Not yet authorized")
         }
 

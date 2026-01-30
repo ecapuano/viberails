@@ -163,7 +163,7 @@ fn test_uninstall_from_removes_our_hook() {
         }
     });
 
-    claude.uninstall_from("PreToolUse", &mut json).unwrap();
+    claude.uninstall_from("PreToolUse", &mut json);
 
     let hooks = &json["hooks"]["PreToolUse"];
     let hooks_arr = hooks.as_array().unwrap();
@@ -189,7 +189,7 @@ fn test_uninstall_from_preserves_other_hooks() {
         }
     });
 
-    claude.uninstall_from("PreToolUse", &mut json).unwrap();
+    claude.uninstall_from("PreToolUse", &mut json);
 
     let hooks = &json["hooks"]["PreToolUse"];
     let hooks_arr = hooks.as_array().unwrap();
@@ -205,7 +205,7 @@ fn test_uninstall_from_no_hooks_object() {
     let mut json = json!({});
 
     // Should succeed without error (just warns)
-    claude.uninstall_from("PreToolUse", &mut json).unwrap();
+    claude.uninstall_from("PreToolUse", &mut json);
 }
 
 #[test]
@@ -216,7 +216,7 @@ fn test_uninstall_from_no_hook_type() {
     });
 
     // Should succeed without error (just warns)
-    claude.uninstall_from("PreToolUse", &mut json).unwrap();
+    claude.uninstall_from("PreToolUse", &mut json);
 }
 
 #[test]
@@ -236,7 +236,7 @@ fn test_uninstall_from_no_wildcard_matcher() {
     });
 
     // Should succeed without error (just warns) - only looks at wildcard matcher
-    claude.uninstall_from("PreToolUse", &mut json).unwrap();
+    claude.uninstall_from("PreToolUse", &mut json);
 
     // Hook in non-wildcard matcher should remain untouched
     let hooks = &json["hooks"]["PreToolUse"];
@@ -262,7 +262,7 @@ fn test_uninstall_from_hook_not_present() {
     });
 
     // Should succeed without error (just warns)
-    claude.uninstall_from("PreToolUse", &mut json).unwrap();
+    claude.uninstall_from("PreToolUse", &mut json);
 
     // Other hooks should remain
     let hooks = &json["hooks"]["PreToolUse"];
@@ -296,7 +296,7 @@ fn test_uninstall_from_different_hook_types() {
         }
     });
 
-    claude.uninstall_from("PreToolUse", &mut json).unwrap();
+    claude.uninstall_from("PreToolUse", &mut json);
 
     // PreToolUse hook should be removed
     let pre_hooks = &json["hooks"]["PreToolUse"][0]["hooks"].as_array().unwrap();

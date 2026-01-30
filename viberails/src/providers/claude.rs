@@ -138,7 +138,7 @@ impl Claude {
         Ok(())
     }
 
-    pub(crate) fn uninstall_from(&self, hook_type: &str, json: &mut Value) -> Result<()> {
+    pub(crate) fn uninstall_from(&self, hook_type: &str, json: &mut Value) {
         let hooks_obj = json
             .as_object_mut()
             .and_then(|root| root.get_mut("hooks"))
@@ -146,13 +146,13 @@ impl Claude {
 
         let Some(hooks_obj) = hooks_obj else {
             warn!("No hooks found in {}", self.settings.display());
-            return Ok(());
+            return;
         };
 
         let Some(hook_type_arr) = hooks_obj.get_mut(hook_type).and_then(|v| v.as_array_mut())
         else {
             warn!("No {hook_type} hooks found in {}", self.settings.display());
-            return Ok(());
+            return;
         };
 
         // Find the wildcard entry
@@ -166,7 +166,7 @@ impl Claude {
                 "No wildcard matcher found for {hook_type} in {}",
                 self.settings.display()
             );
-            return Ok(());
+            return;
         };
 
         let Some(hooks_arr) = entry.get_mut("hooks").and_then(|h| h.as_array_mut()) else {
@@ -174,7 +174,7 @@ impl Claude {
                 "No hooks array found in wildcard matcher for {hook_type} in {}",
                 self.settings.display()
             );
-            return Ok(());
+            return;
         };
 
         // Remove our hook
@@ -184,8 +184,6 @@ impl Claude {
         if hooks_arr.len() == original_len {
             warn!("{hook_type} hook not found in {}", self.settings.display());
         }
-
-        Ok(())
     }
 }
 
@@ -235,8 +233,7 @@ impl LLmProviderTrait for Claude {
         let mut json: Value = serde_json::from_str(&data)
             .with_context(|| format!("Unable to parse JSON data in {}", self.settings.display()))?;
 
-        self.uninstall_from(hook_type, &mut json)
-            .with_context(|| format!("Unable to update {}", self.settings.display()))?;
+        self.uninstall_from(hook_type, &mut json);
 
         let json_str =
             serde_json::to_string_pretty(&json).context("Failed to serialize Claude settings")?;
