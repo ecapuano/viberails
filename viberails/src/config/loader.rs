@@ -40,10 +40,33 @@ pub struct UserConfig {
     pub fail_open: bool,
 }
 
-#[derive(Default, Serialize, Deserialize, Tabled)]
+#[derive(Default, Serialize, Deserialize)]
 pub struct LcOrg {
     pub oid: String,
     pub jwt: String,
+}
+
+impl Tabled for LcOrg {
+    const LENGTH: usize = 2;
+
+    fn fields(&self) -> Vec<std::borrow::Cow<'_, str>> {
+        let truncated_jwt = if self.jwt.len() > 36 {
+            format!("{}...", &self.jwt[..36])
+        } else {
+            self.jwt.clone()
+        };
+        vec![
+            std::borrow::Cow::Borrowed(&self.oid),
+            std::borrow::Cow::Owned(truncated_jwt),
+        ]
+    }
+
+    fn headers() -> Vec<std::borrow::Cow<'static, str>> {
+        vec![
+            std::borrow::Cow::Borrowed("oid"),
+            std::borrow::Cow::Borrowed("jwt"),
+        ]
+    }
 }
 
 impl LcOrg {
