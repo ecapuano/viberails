@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{env, fs, path::PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 
@@ -7,6 +7,23 @@ pub const PROJECT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn print_header() {
     println!("{PROJECT_NAME} {PROJECT_VERSION}");
+}
+
+pub fn display_authorize_help() -> Result<()> {
+    print_header();
+
+    let exe = env::current_exe()
+        .ok()
+        .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| PROJECT_NAME.to_string());
+
+    println!();
+    println!("  Not logged in.");
+    println!();
+    println!("  Run `{exe} login` to authenticate.");
+    println!();
+
+    Ok(())
 }
 
 pub fn project_data_dir() -> Result<PathBuf> {

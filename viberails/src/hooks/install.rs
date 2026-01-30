@@ -3,13 +3,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Error, Result, anyhow};
+use anyhow::{Context, Error, Result, anyhow, bail};
 use colored::Colorize;
 use log::{error, info, warn};
 
 use crate::{
-    common::print_header,
-    config::uninstall_config,
+    common::{display_authorize_help, print_header},
+    config::{Config, uninstall_config},
     providers::{Claude, LLmProviderTrait, Providers},
 };
 
@@ -158,6 +158,15 @@ fn binary_location() -> Result<PathBuf> {
 ////////////////////////////////////////////////////////////////////////////////
 
 pub fn install() -> Result<()> {
+    //
+    // Make sure we're autorized, otherwise it'll fail silently
+    //
+    let config = Config::load()?;
+    if !config.org.authorized() {
+        display_authorize_help()?;
+        bail!("Not Authorized");
+    }
+
     //
     // We also have to install ourselves on the host. We'll do like claude-code
     // and intall ourselves in ~/.local/bin/
