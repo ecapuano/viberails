@@ -35,7 +35,7 @@ const OAUTH_CALLBACK_TIMEOUT: u64 = 300;
 const PREFERRED_PORTS: &[u16] = &[8085, 8086, 8087, 8088, 8089];
 
 /// OAuth provider identifiers
-#[derive(Debug, Clone, Copy, Default, clap::ValueEnum)]
+#[derive(Debug, Clone, Copy, Default, clap::ValueEnum, PartialEq, Eq)]
 pub enum OAuthProvider {
     #[default]
     Google,
@@ -151,9 +151,21 @@ struct MfaFinalizeResponse {
 
 /// Callback result from the OAuth server
 enum CallbackResult {
-    Success(String), // The full callback path with query params
+    /// Authentication completed successfully (tokens ready)
+    Success(OAuthTokens),
+    /// Authentication failed with an error message
     Error(String),
+    /// Authentication timed out
     Timeout,
+}
+
+/// MFA session state for browser-based verification
+struct MfaSession {
+    mfa_pending_credential: String,
+    mfa_enrollment_id: String,
+    factor_display_name: String,
+    provider: OAuthProvider,
+    local_id: Option<String>,
 }
 
 /// Configuration for the authorize flow
@@ -186,17 +198,19 @@ pub fn authorize(config: AuthorizeConfig) -> Result<OAuthTokens> {
     println!("OAuth callback server started on port {port}");
     println!("Using OAuth provider: {}", config.provider.as_firebase_id());
 
+    // Get auth URI from Firebase first (we need session_id for the callback server)
+    let (session_id, auth_uri) = create_auth_uri(&config.provider, &redirect_uri)?;
+
     // Start the callback server in a separate thread
     let (tx, rx): (Sender<CallbackResult>, Receiver<CallbackResult>) = mpsc::channel();
     let server = Server::http(format!("127.0.0.1:{port}"))
         .map_err(|e| anyhow!("Failed to start OAuth callback server: {e}"))?;
 
+    let redirect_uri_clone = redirect_uri.clone();
+    let provider = config.provider;
     let server_handle = thread::spawn(move || {
-        run_callback_server(server, tx);
+        run_callback_server(server, tx, redirect_uri_clone, provider, session_id);
     });
-
-    // Get auth URI from Firebase
-    let (session_id, auth_uri) = create_auth_uri(&config.provider, &redirect_uri)?;
 
     // Open browser or print URL
     if config.no_browser {
@@ -210,7 +224,7 @@ pub fn authorize(config: AuthorizeConfig) -> Result<OAuthTokens> {
 
     println!("Waiting for authentication...");
 
-    // Wait for callback
+    // Wait for callback - the server now handles the full flow including MFA
     let callback_result = rx
         .recv_timeout(Duration::from_secs(OAUTH_CALLBACK_TIMEOUT))
         .unwrap_or(CallbackResult::Timeout);
@@ -219,11 +233,7 @@ pub fn authorize(config: AuthorizeConfig) -> Result<OAuthTokens> {
     drop(server_handle);
 
     match callback_result {
-        CallbackResult::Success(callback_path) => {
-            // Extract query string and exchange for Firebase tokens
-            let query_string = extract_query_string(&callback_path)?;
-            sign_in_with_idp(&redirect_uri, &query_string, &session_id, &config.provider)
-        }
+        CallbackResult::Success(tokens) => Ok(tokens),
         CallbackResult::Error(error) => Err(anyhow!("Authentication failed: {error}")),
         CallbackResult::Timeout => Err(anyhow!("Authentication timeout")),
     }
@@ -244,11 +254,26 @@ fn find_free_port() -> Result<u16> {
 }
 
 /// Run the OAuth callback server
-fn run_callback_server(server: Server, tx: Sender<CallbackResult>) {
+///
+/// This server handles:
+/// 1. The initial OAuth callback with authorization code
+/// 2. Token exchange with Firebase
+/// 3. MFA verification form (if MFA is required)
+/// 4. MFA code submission and verification
+fn run_callback_server(
+    server: Server,
+    tx: Sender<CallbackResult>,
+    redirect_uri: String,
+    provider: OAuthProvider,
+    session_id: String,
+) {
     let start_time = Instant::now();
     let timeout = Duration::from_secs(OAUTH_CALLBACK_TIMEOUT);
 
-    for request in server.incoming_requests() {
+    // MFA session state - populated if MFA is required
+    let mut mfa_session: Option<MfaSession> = None;
+
+    for mut request in server.incoming_requests() {
         // Check timeout
         if start_time.elapsed() > timeout {
             let _ = tx.send(CallbackResult::Timeout);
@@ -256,6 +281,7 @@ fn run_callback_server(server: Server, tx: Sender<CallbackResult>) {
         }
 
         let url = request.url().to_string();
+        let method = request.method().to_string();
 
         // Handle favicon requests
         if url == "/favicon.ico" {
@@ -264,56 +290,259 @@ fn run_callback_server(server: Server, tx: Sender<CallbackResult>) {
             continue;
         }
 
-        // Parse the callback URL
+        // Handle MFA code submission (POST /mfa/verify)
+        if method == "POST" && url == "/mfa/verify" {
+            if let Some(ref session) = mfa_session {
+                // Read the POST body
+                let mut body = String::new();
+                if let Err(e) = request.as_reader().read_to_string(&mut body) {
+                    error!("Failed to read MFA POST body: {}", e);
+                    let _ = request.respond(text_response(400, "Failed to read request body"));
+                    continue;
+                }
+
+                // Parse the code from form data (code=XXXXXX)
+                let code = body
+                    .split('&')
+                    .find_map(|pair| {
+                        let mut parts = pair.splitn(2, '=');
+                        if parts.next() == Some("code") {
+                            parts
+                                .next()
+                                .map(|v| urlencoding::decode(v).unwrap_or_default().into_owned())
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_default();
+
+                // Validate code format
+                if code.len() != 6 || !code.chars().all(|c| c.is_ascii_digit()) {
+                    let _ = request.respond(text_response(400, "Invalid code format"));
+                    continue;
+                }
+
+                // Attempt MFA verification
+                match finalize_mfa(
+                    &session.mfa_pending_credential,
+                    &session.mfa_enrollment_id,
+                    &code,
+                    &session.provider,
+                    session.local_id.as_deref(),
+                ) {
+                    Ok(tokens) => {
+                        // MFA successful - respond with success page HTML
+                        let _ = request.respond(html_response(200, &success_html()));
+                        let _ = tx.send(CallbackResult::Success(tokens));
+                        return;
+                    }
+                    Err(e) => {
+                        // MFA failed - return error message
+                        let error_msg = e.to_string();
+                        warn!("MFA verification failed: {}", error_msg);
+                        let _ = request.respond(text_response(401, &error_msg));
+                        continue;
+                    }
+                }
+            }
+            let _ = request.respond(text_response(400, "No MFA session active"));
+            continue;
+        }
+
+        // Handle MFA success page (GET /mfa/success)
+        if url == "/mfa/success" {
+            let _ = request.respond(html_response(200, &success_html()));
+            continue;
+        }
+
+        // Parse the callback URL (GET /callback?...)
         if url.starts_with("/callback") {
             if let Ok(parsed) = Url::parse(&format!("http://localhost{url}")) {
                 let params: HashMap<_, _> = parsed.query_pairs().collect();
 
-                if params.contains_key("code") {
-                    // Callback received - send pending HTML response
-                    // (MFA verification may still be required in terminal)
-                    let html = callback_html();
-                    let response = Response::from_string(html).with_header(
-                        tiny_http::Header::from_bytes(
-                            &b"Content-Type"[..],
-                            &b"text/html; charset=utf-8"[..],
-                        )
-                        .expect("valid header"),
-                    );
-                    let _ = request.respond(response);
-                    let _ = tx.send(CallbackResult::Success(url));
-                    return;
-                } else if let Some(error) = params.get("error") {
+                if let Some(error) = params.get("error") {
                     let error_desc = params
                         .get("error_description")
                         .map(|s| s.to_string())
                         .unwrap_or_else(|| error.to_string());
 
-                    let html = error_html(&error_desc);
-                    let response = Response::from_string(html).with_header(
-                        tiny_http::Header::from_bytes(
-                            &b"Content-Type"[..],
-                            &b"text/html; charset=utf-8"[..],
-                        )
-                        .expect("valid header"),
-                    );
-                    let _ = request.respond(response);
+                    let _ = request.respond(html_response(200, &error_html(&error_desc)));
                     let _ = tx.send(CallbackResult::Error(error_desc));
                     return;
+                }
+
+                if params.contains_key("code") {
+                    // Extract query string for Firebase
+                    let query_string = parsed.query().unwrap_or("").to_string();
+
+                    // Exchange the authorization code for tokens
+                    match exchange_code_for_tokens(
+                        &redirect_uri,
+                        &query_string,
+                        &session_id,
+                        &provider,
+                    ) {
+                        Ok(ExchangeResult::Success(tokens)) => {
+                            // No MFA required - show success and return tokens
+                            let _ = request.respond(html_response(200, &success_html()));
+                            let _ = tx.send(CallbackResult::Success(tokens));
+                            return;
+                        }
+                        Ok(ExchangeResult::MfaRequired(session)) => {
+                            // MFA required - show MFA form
+                            info!("MFA required, showing browser form");
+                            let _ = request.respond(html_response(
+                                200,
+                                &mfa_html(&session.factor_display_name),
+                            ));
+                            mfa_session = Some(session);
+                            continue;
+                        }
+                        Err(e) => {
+                            let error_msg = e.to_string();
+                            error!("Token exchange failed: {}", error_msg);
+                            let _ = request.respond(html_response(200, &error_html(&error_msg)));
+                            let _ = tx.send(CallbackResult::Error(error_msg));
+                            return;
+                        }
+                    }
                 }
             }
 
             // Invalid callback - no code or error
-            let response = Response::from_string("Invalid OAuth callback").with_status_code(400);
-            let _ = request.respond(response);
+            let _ = request.respond(text_response(400, "Invalid OAuth callback"));
             let _ = tx.send(CallbackResult::Error("Invalid OAuth callback".to_string()));
             return;
         }
 
         // Unknown request
-        let response = Response::from_string("Not found").with_status_code(404);
-        let _ = request.respond(response);
+        let _ = request.respond(text_response(404, "Not found"));
     }
+}
+
+/// Create a plain text HTTP response
+fn text_response(status: u16, body: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+    Response::from_string(body)
+        .with_status_code(status)
+        .with_header(
+            tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/plain; charset=utf-8"[..])
+                .expect("valid header"),
+        )
+}
+
+/// Create an HTML HTTP response
+fn html_response(status: u16, html: &str) -> Response<std::io::Cursor<Vec<u8>>> {
+    Response::from_string(html)
+        .with_status_code(status)
+        .with_header(
+            tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..])
+                .expect("valid header"),
+        )
+}
+
+/// Result of exchanging the authorization code
+enum ExchangeResult {
+    /// Tokens received, no MFA required
+    Success(OAuthTokens),
+    /// MFA is required, session created
+    MfaRequired(MfaSession),
+}
+
+/// Exchange authorization code for tokens, detecting if MFA is required
+fn exchange_code_for_tokens(
+    request_uri: &str,
+    query_string: &str,
+    session_id: &str,
+    provider: &OAuthProvider,
+) -> Result<ExchangeResult> {
+    let url = format!("{SIGN_IN_WITH_IDP}?key={FIREBASE_API_KEY}");
+
+    info!("Exchanging OAuth callback with Firebase signInWithIdp");
+    debug!("request_uri: {}", request_uri);
+    debug!("query_string: {}", query_string);
+    debug!("session_id: {}", session_id);
+
+    let payload = SignInWithIdpRequest {
+        request_uri: request_uri.to_string(),
+        post_body: query_string.to_string(),
+        session_id: session_id.to_string(),
+        return_secure_token: true,
+        return_idp_credential: true,
+    };
+
+    debug!(
+        "signInWithIdp request payload: {:?}",
+        serde_json::to_string(&payload).unwrap_or_default()
+    );
+
+    let response = minreq::post(&url)
+        .with_json(&payload)?
+        .with_timeout(10)
+        .send()
+        .context("Failed to sign in with IdP")?;
+
+    let response_body = response.as_str().unwrap_or("(non-utf8 response)");
+    debug!("signInWithIdp response status: {}", response.status_code);
+    debug!("signInWithIdp response body: {}", response_body);
+
+    if response.status_code != 200 {
+        error!(
+            "signInWithIdp failed: HTTP {} - {}",
+            response.status_code, response_body
+        );
+        return Err(anyhow!(
+            "Failed to sign in with IdP: HTTP {} - {}",
+            response.status_code,
+            response_body
+        ));
+    }
+
+    // First, check if MFA is required by looking for mfaPendingCredential
+    if let Ok(mfa_response) = serde_json::from_str::<SignInWithIdpMfaResponse>(response_body) {
+        info!("MFA required, creating MFA session for browser verification");
+
+        // Find the first TOTP factor
+        let factor = mfa_response
+            .mfa_info
+            .iter()
+            .find(|f| f.totp_info.is_some())
+            .ok_or_else(|| {
+                anyhow!("Only TOTP (authenticator app) MFA is supported. SMS MFA is not yet implemented.")
+            })?;
+
+        let session = MfaSession {
+            mfa_pending_credential: mfa_response.mfa_pending_credential,
+            mfa_enrollment_id: factor.mfa_enrollment_id.clone(),
+            factor_display_name: factor
+                .display_name
+                .clone()
+                .unwrap_or_else(|| "your authenticator app".to_string()),
+            provider: *provider,
+            local_id: mfa_response.local_id,
+        };
+
+        return Ok(ExchangeResult::MfaRequired(session));
+    }
+
+    // No MFA required, parse as regular response
+    let data: SignInWithIdpResponse =
+        serde_json::from_str(response_body).context("Failed to parse signInWithIdp response")?;
+
+    // Calculate expiry timestamp
+    let expires_in: i64 = data.expires_in.parse().unwrap_or(3600);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let expires_at = now.saturating_add(expires_in);
+
+    Ok(ExchangeResult::Success(OAuthTokens {
+        id_token: data.id_token,
+        refresh_token: data.refresh_token,
+        expires_at,
+        provider: provider.as_firebase_id().to_string(),
+        uid: data.local_id,
+    }))
 }
 
 /// Request auth URI from Firebase
@@ -369,221 +598,6 @@ fn create_auth_uri(provider: &OAuthProvider, redirect_uri: &str) -> Result<(Stri
     Ok((data.session_id, data.auth_uri))
 }
 
-/// Extract query string from callback URL
-fn extract_query_string(callback_path: &str) -> Result<String> {
-    info!("Extracting query string from callback path");
-    debug!("callback_path: {}", callback_path);
-
-    let parsed = Url::parse(&format!("http://localhost{callback_path}"))
-        .context("Failed to parse callback URL")?;
-
-    let query = parsed
-        .query()
-        .ok_or_else(|| anyhow!("No query parameters in callback"))?;
-
-    debug!("Extracted query string: {}", query);
-
-    // Check for error in query
-    let params: HashMap<_, _> = parsed.query_pairs().collect();
-    debug!("Query parameters: {:?}", params.keys().collect::<Vec<_>>());
-
-    if let Some(error) = params.get("error") {
-        let error_desc = params
-            .get("error_description")
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| error.to_string());
-        error!("OAuth error in callback: {}", error_desc);
-        return Err(anyhow!("OAuth error: {error_desc}"));
-    }
-
-    if params.contains_key("code") {
-        info!("Found authorization code in callback");
-    } else {
-        warn!("No 'code' parameter found in callback query string");
-    }
-
-    Ok(query.to_string())
-}
-
-/// Exchange provider response with Firebase for tokens
-fn sign_in_with_idp(
-    request_uri: &str,
-    query_string: &str,
-    session_id: &str,
-    provider: &OAuthProvider,
-) -> Result<OAuthTokens> {
-    let url = format!("{SIGN_IN_WITH_IDP}?key={FIREBASE_API_KEY}");
-
-    info!("Exchanging OAuth callback with Firebase signInWithIdp");
-    debug!("request_uri: {}", request_uri);
-    debug!("query_string: {}", query_string);
-    debug!("session_id: {}", session_id);
-
-    // Pass the full query string from the OAuth callback as post_body
-    // Firebase will extract the authorization code and exchange it for tokens
-    let payload = SignInWithIdpRequest {
-        request_uri: request_uri.to_string(),
-        post_body: query_string.to_string(),
-        session_id: session_id.to_string(),
-        return_secure_token: true,
-        return_idp_credential: true,
-    };
-
-    debug!(
-        "signInWithIdp request payload: {:?}",
-        serde_json::to_string(&payload).unwrap_or_default()
-    );
-
-    let response = minreq::post(&url)
-        .with_json(&payload)?
-        .with_timeout(10)
-        .send()
-        .context("Failed to sign in with IdP")?;
-
-    let response_body = response.as_str().unwrap_or("(non-utf8 response)");
-    debug!("signInWithIdp response status: {}", response.status_code);
-    debug!("signInWithIdp response body: {}", response_body);
-
-    if response.status_code != 200 {
-        error!(
-            "signInWithIdp failed: HTTP {} - {}",
-            response.status_code, response_body
-        );
-        return Err(anyhow!(
-            "Failed to sign in with IdP: HTTP {} - {}",
-            response.status_code,
-            response_body
-        ));
-    }
-
-    // First, check if MFA is required by looking for mfaPendingCredential
-    if let Ok(mfa_response) = serde_json::from_str::<SignInWithIdpMfaResponse>(response_body) {
-        info!("MFA required, initiating MFA verification flow");
-        return handle_mfa_verification(&mfa_response, provider);
-    }
-
-    // No MFA required, parse as regular response
-    let data: SignInWithIdpResponse =
-        serde_json::from_str(response_body).context("Failed to parse signInWithIdp response")?;
-
-    // Calculate expiry timestamp
-    let expires_in: i64 = data.expires_in.parse().unwrap_or(3600);
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    let expires_at = now.saturating_add(expires_in);
-
-    Ok(OAuthTokens {
-        id_token: data.id_token,
-        refresh_token: data.refresh_token,
-        expires_at,
-        provider: provider.as_firebase_id().to_string(),
-        uid: data.local_id,
-    })
-}
-
-/// Handle MFA verification flow
-fn handle_mfa_verification(
-    mfa_response: &SignInWithIdpMfaResponse,
-    provider: &OAuthProvider,
-) -> Result<OAuthTokens> {
-    println!();
-    println!("{}", "=".repeat(60));
-    println!("Multi-Factor Authentication Required");
-    println!("{}", "=".repeat(60));
-    println!();
-    println!("Your account has 2FA enabled. Please complete verification.");
-    println!();
-    println!("Enrolled authentication factor(s):");
-
-    for (i, factor) in mfa_response.mfa_info.iter().enumerate() {
-        let display_name = factor.display_name.as_deref().unwrap_or("Unnamed factor");
-        let factor_type = if factor.phone_info.is_some() {
-            "SMS"
-        } else if factor.totp_info.is_some() {
-            "Authenticator app (TOTP)"
-        } else {
-            "Unknown"
-        };
-        println!("  {}. {} ({})", i + 1, display_name, factor_type);
-    }
-    println!();
-
-    // Use the first factor (typically TOTP)
-    let factor = mfa_response
-        .mfa_info
-        .first()
-        .ok_or_else(|| anyhow!("No MFA factors found"))?;
-
-    // Only TOTP is supported for now
-    if factor.totp_info.is_none() {
-        return Err(anyhow!(
-            "Only TOTP (authenticator app) MFA is supported. SMS MFA is not yet implemented."
-        ));
-    }
-
-    // Prompt for verification code
-    let verification_code = prompt_mfa_code(factor)?;
-
-    // Finalize MFA
-    finalize_mfa(
-        &mfa_response.mfa_pending_credential,
-        &factor.mfa_enrollment_id,
-        &verification_code,
-        provider,
-        mfa_response.local_id.as_deref(),
-    )
-}
-
-/// Prompt user for MFA verification code
-fn prompt_mfa_code(factor: &MfaFactorInfo) -> Result<String> {
-    let factor_name = factor
-        .display_name
-        .as_deref()
-        .unwrap_or("your authenticator");
-
-    let prompt = format!("Enter the 6-digit code from {}: ", factor_name);
-
-    for attempt in 0..3 {
-        if attempt > 0 {
-            println!("Please try again.");
-        }
-
-        print!("{}", prompt);
-        std::io::Write::flush(&mut std::io::stdout())?;
-
-        let mut code = String::new();
-        std::io::stdin()
-            .read_line(&mut code)
-            .context("Failed to read verification code")?;
-
-        let code = code.trim();
-
-        if code.is_empty() {
-            println!("Error: Code cannot be empty.");
-            continue;
-        }
-
-        if !code.chars().all(|c| c.is_ascii_digit()) {
-            println!("Error: Code must contain only digits.");
-            continue;
-        }
-
-        if code.len() != 6 {
-            println!(
-                "Error: Code must be exactly 6 digits (you entered {}).",
-                code.len()
-            );
-            continue;
-        }
-
-        return Ok(code.to_string());
-    }
-
-    Err(anyhow!("Maximum attempts (3) exceeded"))
-}
-
 /// Finalize MFA verification and get tokens
 fn finalize_mfa(
     mfa_pending_credential: &str,
@@ -603,8 +617,6 @@ fn finalize_mfa(
             verification_code: verification_code.to_string(),
         }),
     };
-
-    println!("Verifying code...");
 
     let response = minreq::post(&url)
         .with_json(&payload)?
@@ -644,7 +656,7 @@ fn finalize_mfa(
     let data: MfaFinalizeResponse =
         serde_json::from_str(response_body).context("Failed to parse MFA finalize response")?;
 
-    println!("Verification successful!");
+    info!("MFA verification successful");
 
     // Calculate expiry timestamp (default to 1 hour if not provided)
     let expires_in: i64 = data
@@ -696,11 +708,18 @@ fn open_browser(url: &str) -> Result<()> {
     Ok(())
 }
 
-/// Generate callback received HTML page (shown while MFA may still be pending)
-fn callback_html() -> String {
-    OAuthAssets::get("callback.html")
+/// Generate success HTML page
+fn success_html() -> String {
+    OAuthAssets::get("success.html")
         .map(|file| String::from_utf8_lossy(&file.data).into_owned())
-        .unwrap_or_else(|| "Authentication received. Check your terminal to continue.".to_string())
+        .unwrap_or_else(|| "Authentication successful! You can close this window.".to_string())
+}
+
+/// Generate MFA HTML page with TOTP input form
+fn mfa_html(factor_name: &str) -> String {
+    OAuthAssets::get("mfa.html")
+        .map(|file| String::from_utf8_lossy(&file.data).replace("{{FACTOR_NAME}}", factor_name))
+        .unwrap_or_else(|| format!("MFA required. Enter the 6-digit code from {}.", factor_name))
 }
 
 /// Generate error HTML page
