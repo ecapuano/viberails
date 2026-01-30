@@ -6,7 +6,11 @@ use inquire::Text;
 use log::info;
 
 use crate::{
-    cloud::lc_api::{OutputCreate, get_jwt_firebase, get_org_urls, org_available, org_create},
+    cloud::lc_api::{
+        WebhookAdapter, create_installation_key, get_jwt_firebase, get_org_urls, org_available,
+        org_create,
+    },
+    common::PROJECT_NAME,
     config::{Config, LcOrg},
     oauth::{LoginArgs, authorize},
 };
@@ -72,36 +76,58 @@ fn wait_for_org(oid: &str, token: &str) -> Result<String> {
     }
 }
 
-fn create_web_hook(oid: &str, jwt: &str, dest_url: &str) -> Result<String> {
+/// Creates a webhook adapter and returns the full webhook URL.
+///
+/// The webhook URL format is: https://{hooks_domain}/{oid}/{adapter_name}/{secret}
+fn create_web_hook(oid: &str, jwt: &str, install_id: &str) -> Result<String> {
     //
-    // Create webhook output for detections
-    //
-    info!("Creating webhook output for oid={oid}");
-    OutputCreate::builder()
-        .token(jwt)
-        .oid(oid)
-        .name("detections-vr")
-        .module("webhook")
-        .output_type("detect")
-        .dest_host(dest_url)
-        .build()
-        .create()
-        .context("Failed to create webhook output")?;
-
-    info!("Webhook output created successfully");
-
-    //
-    // Query org URLs to get the hook URL
+    // Query org URLs to get the hooks domain
     //
     info!("Querying org URLs for oid={oid}");
     let urls = get_org_urls(oid).context("Failed to get org URLs")?;
-    info!("Org URLs: {:?}", urls);
-
-    let hook = urls
+    let hooks_domain = urls
         .hooks
         .context("Hook URL not available for this organization")?;
+    info!("Hooks domain: {hooks_domain}");
 
-    Ok(hook)
+    //
+    // Create an installation key for the webhook adapter
+    //
+    info!("Creating installation key for webhook adapter");
+    let installation_key =
+        create_installation_key(jwt, oid, "viberails webhook adapter installation key")
+            .context("Failed to create installation key")?;
+    info!("Installation key created: {installation_key}");
+
+    //
+    // Generate a secret for the webhook URL
+    //
+    let secret = uuid::Uuid::new_v4().to_string();
+
+    //
+    // Create the webhook adapter in the cloud_sensor hive
+    // Using install_id as sensor_seed_key so each installation gets a unique sensor
+    //
+    info!("Creating webhook adapter for oid={oid}");
+    WebhookAdapter::builder()
+        .token(jwt)
+        .oid(oid)
+        .name(PROJECT_NAME)
+        .secret(&secret)
+        .installation_key(&installation_key)
+        .sensor_seed_key(install_id)
+        .build()
+        .create()
+        .context("Failed to create webhook adapter")?;
+    info!("Webhook adapter created successfully");
+
+    //
+    // Construct the full webhook URL
+    //
+    let webhook_url = format!("https://{hooks_domain}/{oid}/{PROJECT_NAME}/{secret}");
+    info!("Webhook URL: {webhook_url}");
+
+    Ok(webhook_url)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -146,7 +172,8 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     let jwt = wait_for_org(&oid, &login.id_token)?;
     info!("received token");
 
-    let url = create_web_hook(&oid, &jwt, "hello")?;
+    let config = Config::load()?;
+    let url = create_web_hook(&oid, &jwt, &config.install_id)?;
 
     //
     // save the token to the config file

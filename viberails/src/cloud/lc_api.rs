@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use bon::Builder;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::cloud::REQUEST_TIMEOUT_SECS;
 
@@ -93,47 +93,6 @@ where
     Ok(resp.data.oid)
 }
 
-#[derive(Builder)]
-pub struct OutputCreate<'a> {
-    token: &'a str,
-    oid: &'a str,
-    name: &'a str,
-    module: &'a str,
-    output_type: &'a str,
-    dest_host: &'a str,
-}
-
-impl OutputCreate<'_> {
-    pub fn create(&self) -> Result<()> {
-        let url = format!("{LC_API_URL}/outputs/{}", self.oid);
-        let bearer = format!("Bearer {}", self.token);
-
-        let body = format!(
-            "name={}&module={}&type={}&dest_host={}",
-            self.name, self.module, self.output_type, self.dest_host
-        );
-
-        let res = minreq::post(&url)
-            .with_timeout(REQUEST_TIMEOUT_SECS)
-            .with_header("Authorization", bearer)
-            .with_header("Content-Type", "application/x-www-form-urlencoded")
-            .with_body(body)
-            .send()
-            .with_context(|| format!("Failed to create output at {url}"))?;
-
-        if res.status_code >= 400 {
-            let error_body = res.as_str().unwrap_or("Unknown error");
-            anyhow::bail!(
-                "Output creation failed with status {}: {}",
-                res.status_code,
-                error_body
-            );
-        }
-
-        Ok(())
-    }
-}
-
 #[derive(Debug, Deserialize)]
 struct OrgUrlsResponse {
     url: OrgUrls,
@@ -169,4 +128,128 @@ where
         .context("Unable to deserialize org URLs response")?;
 
     Ok(resp.url)
+}
+
+#[derive(Debug, Deserialize)]
+struct InstallationKeyResponse {
+    iid: String,
+}
+
+pub fn create_installation_key<T, O>(token: T, oid: O, desc: &str) -> Result<String>
+where
+    T: AsRef<str>,
+    O: AsRef<str>,
+{
+    let url = format!("{LC_API_URL}/installationkeys/{}", oid.as_ref());
+    let bearer = format!("Bearer {}", token.as_ref());
+
+    let body = format!("tags=viberails&desc={}", desc);
+
+    let res = minreq::post(&url)
+        .with_timeout(REQUEST_TIMEOUT_SECS)
+        .with_header("Authorization", bearer)
+        .with_header("Content-Type", "application/x-www-form-urlencoded")
+        .with_body(body)
+        .send()
+        .with_context(|| format!("Failed to create installation key at {url}"))?;
+
+    if res.status_code >= 400 {
+        let error_body = res.as_str().unwrap_or("Unknown error");
+        anyhow::bail!(
+            "Installation key creation failed with status {}: {}",
+            res.status_code,
+            error_body
+        );
+    }
+
+    let resp: InstallationKeyResponse = res
+        .json()
+        .context("Unable to deserialize installation key response")?;
+
+    Ok(resp.iid)
+}
+
+#[derive(Serialize)]
+struct WebhookAdapterData<'a> {
+    sensor_type: &'a str,
+    webhook: WebhookConfig<'a>,
+}
+
+#[derive(Serialize)]
+struct WebhookConfig<'a> {
+    secret: &'a str,
+    client_options: ClientOptions<'a>,
+}
+
+#[derive(Serialize)]
+struct ClientOptions<'a> {
+    hostname: &'a str,
+    identity: Identity<'a>,
+    platform: &'a str,
+    sensor_seed_key: &'a str,
+}
+
+#[derive(Serialize)]
+struct Identity<'a> {
+    oid: &'a str,
+    installation_key: &'a str,
+}
+
+#[derive(Builder)]
+pub struct WebhookAdapter<'a> {
+    token: &'a str,
+    oid: &'a str,
+    name: &'a str,
+    secret: &'a str,
+    installation_key: &'a str,
+    sensor_seed_key: &'a str,
+}
+
+impl WebhookAdapter<'_> {
+    pub fn create(&self) -> Result<()> {
+        let url = format!(
+            "{LC_API_URL}/hive/cloud_sensor/{}/{}/data",
+            self.oid, self.name
+        );
+        let bearer = format!("Bearer {}", self.token);
+
+        let data = WebhookAdapterData {
+            sensor_type: "webhook",
+            webhook: WebhookConfig {
+                secret: self.secret,
+                client_options: ClientOptions {
+                    hostname: self.name,
+                    identity: Identity {
+                        oid: self.oid,
+                        installation_key: self.installation_key,
+                    },
+                    platform: "json",
+                    sensor_seed_key: self.sensor_seed_key,
+                },
+            },
+        };
+
+        let data_json =
+            serde_json::to_string(&data).context("Failed to serialize webhook adapter data")?;
+        let body = format!("data={}", data_json);
+
+        let res = minreq::post(&url)
+            .with_timeout(REQUEST_TIMEOUT_SECS)
+            .with_header("Authorization", bearer)
+            .with_header("Content-Type", "application/x-www-form-urlencoded")
+            .with_body(body)
+            .send()
+            .with_context(|| format!("Failed to create webhook adapter at {url}"))?;
+
+        if res.status_code >= 400 {
+            let error_body = res.as_str().unwrap_or("Unknown error");
+            anyhow::bail!(
+                "Webhook adapter creation failed with status {}: {}",
+                res.status_code,
+                error_body
+            );
+        }
+
+        Ok(())
+    }
 }

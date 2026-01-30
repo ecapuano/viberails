@@ -10,21 +10,13 @@ use super::loader::{Config, UserConfig};
 fn test_user_config_default() {
     let config = UserConfig::default();
 
-    assert_eq!(
-        config.hook_url,
-        "https://0651b4f82df0a29c.hook.limacharlie.io"
-    );
     assert!(config.fail_open);
 }
 
 #[test]
 fn test_user_config_builder() {
-    let config = UserConfig::builder()
-        .hook_url("https://example.com/hook".to_string())
-        .fail_open(false)
-        .build();
+    let config = UserConfig::builder().fail_open(false).build();
 
-    assert_eq!(config.hook_url, "https://example.com/hook");
     assert!(!config.fail_open);
 }
 
@@ -34,7 +26,6 @@ fn test_user_config_serialization() {
     let json = serde_json::to_string(&config).unwrap();
     let deserialized: UserConfig = serde_json::from_str(&json).unwrap();
 
-    assert_eq!(config.hook_url, deserialized.hook_url);
     assert_eq!(config.fail_open, deserialized.fail_open);
 }
 
@@ -42,14 +33,14 @@ fn test_user_config_serialization() {
 fn test_config_load_existing_valid() {
     let json = r#"{
         "user": {
-            "hook_url": "https://test.com/hook",
             "fail_open": false
         },
         "install_id": "test-install-id-123",
         "org": {
             "oid": "",
             "jwt": "",
-            "name": ""
+            "name": "",
+            "url": ""
         }
     }"#;
 
@@ -58,7 +49,6 @@ fn test_config_load_existing_valid() {
 
     let config = Config::load_existing(temp_file.path()).unwrap();
 
-    assert_eq!(config.user.hook_url, "https://test.com/hook");
     assert!(!config.user.fail_open);
     assert_eq!(config.install_id, "test-install-id-123");
 }
@@ -94,10 +84,7 @@ fn test_config_load_existing_nonexistent_file() {
 #[test]
 fn test_config_serialization_roundtrip() {
     let config = Config {
-        user: UserConfig::builder()
-            .hook_url("https://example.com/hook".to_string())
-            .fail_open(true)
-            .build(),
+        user: UserConfig::builder().fail_open(true).build(),
         install_id: "roundtrip-test-id".to_string(),
         org: LcOrg::default(),
     };
@@ -105,7 +92,6 @@ fn test_config_serialization_roundtrip() {
     let json = serde_json::to_string_pretty(&config).unwrap();
     let deserialized: Config = serde_json::from_str(&json).unwrap();
 
-    assert_eq!(config.user.hook_url, deserialized.user.hook_url);
     assert_eq!(config.user.fail_open, deserialized.user.fail_open);
     assert_eq!(config.install_id, deserialized.install_id);
 }

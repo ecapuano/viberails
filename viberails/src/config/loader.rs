@@ -34,7 +34,7 @@ fn default_hook_url() -> Url {
         .expect("valid hook URL")
 }
 
-#[derive(Serialize, Deserialize, Builder, Tabled)]
+#[derive(Serialize, Deserialize, Builder)]
 pub struct UserConfig {
     pub fail_open: bool,
 }
@@ -45,31 +45,6 @@ pub struct LcOrg {
     pub jwt: String,
     pub name: String,
     pub url: String,
-}
-
-impl Tabled for LcOrg {
-    const LENGTH: usize = 3;
-
-    fn fields(&self) -> Vec<std::borrow::Cow<'_, str>> {
-        let truncated_jwt = if self.jwt.len() > 36 {
-            format!("{}...", &self.jwt[..36])
-        } else {
-            self.jwt.clone()
-        };
-        vec![
-            std::borrow::Cow::Borrowed(&self.oid),
-            std::borrow::Cow::Owned(truncated_jwt),
-            std::borrow::Cow::Borrowed(&self.name),
-        ]
-    }
-
-    fn headers() -> Vec<std::borrow::Cow<'static, str>> {
-        vec![
-            std::borrow::Cow::Borrowed("Team Id"),
-            std::borrow::Cow::Borrowed("Token"),
-            std::borrow::Cow::Borrowed("Team Name"),
-        ]
-    }
 }
 
 impl LcOrg {
@@ -84,13 +59,30 @@ impl Default for UserConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Tabled)]
+#[derive(Serialize, Deserialize)]
 pub struct Config {
-    #[tabled(inline)]
     pub user: UserConfig,
     pub install_id: String,
-    #[tabled(inline)]
     pub org: LcOrg,
+}
+
+#[derive(Tabled)]
+struct ConfigDisplay<'a> {
+    fail_open: bool,
+    install_id: &'a str,
+    org_name: &'a str,
+    org_url: &'a str,
+}
+
+impl<'a> From<&'a Config> for ConfigDisplay<'a> {
+    fn from(config: &'a Config) -> Self {
+        Self {
+            fail_open: config.user.fail_open,
+            install_id: &config.install_id,
+            org_name: &config.org.name,
+            org_url: &config.org.url,
+        }
+    }
 }
 
 impl Config {
@@ -155,7 +147,8 @@ impl Config {
 }
 
 fn display_configuration(config: &Config) {
-    let mut table = Table::new([config]);
+    let display = ConfigDisplay::from(config);
+    let mut table = Table::new([display]);
     table
         .with(Rotate::Left)
         .with(Style::modern())
@@ -202,7 +195,9 @@ pub fn show_configuration() -> Result<()> {
 }
 
 pub fn configure(args: &ConfigureArgs) -> Result<()> {
-    let user = UserConfig::builder().fail_open(args.fail_open).build();
+    let user = UserConfig {
+        fail_open: args.fail_open,
+    };
 
     let mut config = Config::load()?;
 
