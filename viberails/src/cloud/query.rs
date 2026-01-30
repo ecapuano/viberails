@@ -27,28 +27,16 @@ struct CloudRequestMeta<'a> {
     installation_id: &'a str,
     request_id: String,
     hostname: Option<String>,
-}
-
-#[derive(Serialize)]
-struct CloudRequestAuth<'a> {
-    meta_data: CloudRequestMeta<'a>,
-    hook_data: Value,
     session_id: Option<String>,
 }
 
 #[derive(Serialize)]
-struct CloudRequestNotify<'a> {
-    meta_data: CloudRequestMeta<'a>,
-    hook_data: Value,
-    session_id: Option<String>,
-}
-
-#[derive(Serialize, Default)]
 struct CloudRequest<'a> {
+    meta_data: CloudRequestMeta<'a>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    auth: Option<CloudRequestAuth<'a>>,
+    auth: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    notify: Option<CloudRequestNotify<'a>>,
+    notify: Option<Value>,
 }
 
 fn find_session_id(data: &Value) -> Option<String> {
@@ -70,7 +58,7 @@ fn find_session_id(data: &Value) -> Option<String> {
 }
 
 impl<'a> CloudRequestMeta<'a> {
-    pub fn new(config: &'a Config) -> Result<Self> {
+    pub fn new(config: &'a Config, session_id: Option<String>) -> Result<Self> {
         let ts = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .context("Unable to get current timestamp")?
@@ -96,33 +84,6 @@ impl<'a> CloudRequestMeta<'a> {
             installation_id,
             request_id,
             hostname,
-        })
-    }
-}
-
-impl<'a> CloudRequestNotify<'a> {
-    pub fn new(config: &'a Config, hook_data: Value) -> Result<Self> {
-        let session_id = find_session_id(&hook_data);
-
-        let meta_data = CloudRequestMeta::new(config)?;
-
-        Ok(Self {
-            meta_data,
-            hook_data,
-            session_id,
-        })
-    }
-}
-
-impl<'a> CloudRequestAuth<'a> {
-    pub fn new(config: &'a Config, hook_data: Value) -> Result<Self> {
-        let session_id = find_session_id(&hook_data);
-
-        let meta_data = CloudRequestMeta::new(config)?;
-
-        Ok(Self {
-            meta_data,
-            hook_data,
             session_id,
         })
     }
@@ -159,10 +120,13 @@ impl<'a> CloudQuery<'a> {
     }
 
     pub fn notify(&self, data: Value) -> Result<()> {
-        let notify = CloudRequestNotify::new(self.config, data)?;
+        let session_id = find_session_id(&data);
+
+        let meta_data = CloudRequestMeta::new(self.config, session_id)?;
         let req = CloudRequest {
-            notify: Some(notify),
-            ..Default::default()
+            meta_data,
+            notify: Some(data),
+            auth: None,
         };
 
         let ret = minreq::post(&self.url)
@@ -180,11 +144,14 @@ impl<'a> CloudQuery<'a> {
     }
 
     pub fn authorize(&self, data: Value) -> Result<CloudVerdict> {
-        let auth = CloudRequestAuth::new(self.config, data)?;
+        let session_id = find_session_id(&data);
+
+        let meta_data = CloudRequestMeta::new(self.config, session_id)?;
 
         let req = CloudRequest {
-            auth: Some(auth),
-            ..Default::default()
+            meta_data,
+            auth: Some(data),
+            notify: None,
         };
 
         let res = minreq::post(&self.url)
