@@ -101,3 +101,30 @@ jobs:
               with:
                   name: ${{ matrix.artifact }}
                   path: ${{ matrix.artifact }}.exe
+
+    dist:
+        needs: build
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Download all artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  path: dist
+
+            - name: Prepare distribution
+              run: |
+                  # Move binaries from subdirectories to dist root
+                  find dist -type f -name 'viberails-*' -exec mv {} dist/ \;
+                  # Remove empty artifact directories
+                  find dist -type d -empty -delete
+                  # Copy install script
+                  cp installer/install.sh dist/
+
+            - name: Upload distribution
+              uses: actions/upload-artifact@v4
+              with:
+                  name: viberails-dist
+                  path: dist/
