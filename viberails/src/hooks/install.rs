@@ -163,7 +163,7 @@ pub fn install() -> Result<()> {
     //
     let config = Config::load()?;
     if !config.org.authorized() {
-        display_authorize_help()?;
+        display_authorize_help();
         bail!("Not Authorized");
     }
 

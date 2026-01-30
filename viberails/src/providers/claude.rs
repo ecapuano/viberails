@@ -42,8 +42,8 @@ impl Claude {
             .to_str()
             .ok_or_else(|| {
                 anyhow!(
-                    "Program path {:?} contains invalid UTF-8 characters",
-                    self_program.as_ref()
+                    "Program path {} contains invalid UTF-8 characters",
+                    self_program.as_ref().display()
                 )
             })?
             .to_string();

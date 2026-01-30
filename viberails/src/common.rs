@@ -9,7 +9,7 @@ pub fn print_header() {
     println!("{PROJECT_NAME} {PROJECT_VERSION}");
 }
 
-pub fn display_authorize_help() -> Result<()> {
+pub fn display_authorize_help() {
     print_header();
 
     let exe = env::current_exe()
@@ -22,8 +22,6 @@ pub fn display_authorize_help() -> Result<()> {
     println!();
     println!("  Run `{exe} login` to authenticate.");
     println!();
-
-    Ok(())
 }
 
 pub fn project_data_dir() -> Result<PathBuf> {

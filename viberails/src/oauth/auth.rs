@@ -42,7 +42,7 @@ pub enum OAuthProvider {
 }
 
 impl OAuthProvider {
-    fn as_firebase_id(&self) -> &'static str {
+    fn as_firebase_id(self) -> &'static str {
         match self {
             Self::Google => "google.com",
             Self::Microsoft => "microsoft.com",
@@ -213,7 +213,7 @@ pub fn authorize(config: &LoginArgs) -> Result<OAuthTokens> {
     let redirect_uri_clone = redirect_uri.clone();
     let provider = config.provider;
     let server_handle = thread::spawn(move || {
-        run_callback_server(&server, tx, redirect_uri_clone, provider, session_id);
+        run_callback_server(&server, &tx, &redirect_uri_clone, provider, &session_id);
     });
 
     // Open browser or print URL
@@ -264,12 +264,13 @@ fn find_free_port() -> Result<u16> {
 /// 2. Token exchange with Firebase
 /// 3. MFA verification form (if MFA is required)
 /// 4. MFA code submission and verification
+#[allow(clippy::too_many_lines)]
 fn run_callback_server(
     server: &Server,
-    tx: Sender<CallbackResult>,
-    redirect_uri: String,
+    tx: &Sender<CallbackResult>,
+    redirect_uri: &str,
     provider: OAuthProvider,
-    session_id: String,
+    session_id: &str,
 ) {
     let start_time = Instant::now();
     let timeout = Duration::from_secs(OAUTH_CALLBACK_TIMEOUT);
@@ -300,7 +301,7 @@ fn run_callback_server(
                 // Read the POST body
                 let mut body = String::new();
                 if let Err(e) = request.as_reader().read_to_string(&mut body) {
-                    error!("Failed to read MFA POST body: {}", e);
+                    error!("Failed to read MFA POST body: {e}");
                     let _ = request.respond(text_response(400, "Failed to read request body"));
                     continue;
                 }
@@ -343,7 +344,7 @@ fn run_callback_server(
                     Err(e) => {
                         // MFA failed - return error message
                         let error_msg = e.to_string();
-                        warn!("MFA verification failed: {}", error_msg);
+                        warn!("MFA verification failed: {error_msg}");
                         let _ = request.respond(text_response(401, &error_msg));
                         continue;
                     }

@@ -97,8 +97,7 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     // Creating the organization
     //
     info!("Creating {org_name} org in {location}");
-    let oid = org_create(&jwt, &org_name, location.to_string())
-        .context("Unable to create organization")?;
+    let oid = org_create(&jwt, &org_name, location).context("Unable to create organization")?;
     info!("Org created oid={oid}");
 
     //
