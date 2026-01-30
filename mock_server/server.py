@@ -5,10 +5,7 @@
 """
 Mock server for testing the viberails client locally.
 
-Routes:
-  POST /auth   - Authentication endpoint
-  POST /dnr    - Authorization endpoint
-  POST /notify - Notification endpoint
+Accepts any HTTP method and path, logs the request, and returns {"status": "ok"}.
 """
 
 import json
@@ -19,65 +16,28 @@ HOST = "localhost"
 PORT = 8000
 
 
-async def auth_handler(request: web.Request) -> web.Response:
-    """Handle authentication requests."""
+async def catch_all_handler(request: web.Request) -> web.Response:
+    """Handle any request to any path."""
+    path = request.path
+    method = request.method
     try:
         data = await request.json()
-        print(f"[/auth] Received: {json.dumps(data, indent=2)}")
+        print(f"[{method} {path}] Received: {json.dumps(data, indent=2)}")
     except json.JSONDecodeError:
-        print("[/auth] Received request (no JSON body)")
-
-    return web.json_response({"authenticated": True})
-
-
-async def authorize_handler(request: web.Request) -> web.Response:
-    """
-    Handle authorization requests.
-
-    Expected request format:
-      {"ts": <timestamp_ms>, "hook_data": <string>}
-
-    Response format:
-      {"allow": <bool>, "reason": <string>}
-    """
-    try:
-        data = await request.json()
-        print(f"[/dnr] Received: {json.dumps(data, indent=2)}")
-        ts = data.get("ts")
-        hook_data = data.get("hook_data", "")
-        print(f"[/dnr] Timestamp: {ts}, Hook data length: {len(hook_data)}")
-    except json.JSONDecodeError:
-        print("[/dnr] Received request (no JSON body)")
-        return web.json_response({"allow": False, "reason": "Invalid request format"})
+        print(f"[{method} {path}] Received request (no JSON body)")
 
     return web.json_response({"allow": True, "reason": ""})
 
 
-async def notify_handler(request: web.Request) -> web.Response:
-    """Handle notification requests."""
-    try:
-        data = await request.json()
-        print(f"[/notify] Received: {json.dumps(data, indent=2)}")
-    except json.JSONDecodeError:
-        print("[/notify] Received request (no JSON body)")
-
-    return web.json_response({"status": "ok"})
-
-
 def create_app() -> web.Application:
     app = web.Application()
-    app.router.add_post("/auth", auth_handler)
-    app.router.add_post("/dnr", authorize_handler)
-    app.router.add_post("/notify", notify_handler)
+    app.router.add_route("*", "/{path:.*}", catch_all_handler)
     return app
 
 
 if __name__ == "__main__":
     print(f"Starting mock server on http://{HOST}:{PORT}")
-    print("Routes:")
-    print("  POST /auth   - Authentication")
-    print("  POST /dnr    - Authorization")
-    print("  POST /notify - Notification")
+    print("Accepts any HTTP method and path")
     print()
     app = create_app()
     web.run_app(app, host=HOST, port=PORT)

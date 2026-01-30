@@ -26,13 +26,29 @@ struct CloudRequestMeta<'a> {
     ts: u128,
     installation_id: &'a str,
     request_id: String,
+    hostname: Option<String>,
 }
 
 #[derive(Serialize)]
-struct CloudRequest<'a> {
+struct CloudRequestAuth<'a> {
     meta_data: CloudRequestMeta<'a>,
     hook_data: Value,
     session_id: Option<String>,
+}
+
+#[derive(Serialize)]
+struct CloudRequestNotify<'a> {
+    meta_data: CloudRequestMeta<'a>,
+    hook_data: Value,
+    session_id: Option<String>,
+}
+
+#[derive(Serialize, Default)]
+struct CloudRequest<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    auth: Option<CloudRequestAuth<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    notify: Option<CloudRequestNotify<'a>>,
 }
 
 fn find_session_id(data: &Value) -> Option<String> {
@@ -63,15 +79,42 @@ impl<'a> CloudRequestMeta<'a> {
         let installation_id = config.install_id.as_str();
         let request_id = Uuid::new_v4().to_string();
 
+        let hostname = if let Ok(host) = hostname::get() {
+            if let Ok(host) = host.into_string() {
+                Some(host)
+            } else {
+                warn!("Unable to get localhostname");
+                None
+            }
+        } else {
+            warn!("Unable to get localhostname");
+            None
+        };
+
         Ok(Self {
             ts,
             installation_id,
             request_id,
+            hostname,
         })
     }
 }
 
-impl<'a> CloudRequest<'a> {
+impl<'a> CloudRequestNotify<'a> {
+    pub fn new(config: &'a Config, hook_data: Value) -> Result<Self> {
+        let session_id = find_session_id(&hook_data);
+
+        let meta_data = CloudRequestMeta::new(config)?;
+
+        Ok(Self {
+            meta_data,
+            hook_data,
+            session_id,
+        })
+    }
+}
+
+impl<'a> CloudRequestAuth<'a> {
     pub fn new(config: &'a Config, hook_data: Value) -> Result<Self> {
         let session_id = find_session_id(&hook_data);
 
@@ -88,6 +131,7 @@ impl<'a> CloudRequest<'a> {
 pub struct CloudQuery<'a> {
     config: &'a Config,
     bearer: String,
+    url: String,
 }
 
 impl<'a> CloudQuery<'a> {
@@ -103,13 +147,25 @@ impl<'a> CloudQuery<'a> {
 
         let bearer = format!("Bearer {}", config.org.jwt);
 
-        Ok(Self { config, bearer })
+        let url = format!("{}/{}/test-dr", config.user.hook_url, config.org.oid);
+
+        info!("Using url={}", url);
+
+        Ok(Self {
+            config,
+            bearer,
+            url,
+        })
     }
 
     pub fn notify(&self, data: Value) -> Result<()> {
-        let req = CloudRequest::new(self.config, data)?;
+        let notify = CloudRequestNotify::new(self.config, data)?;
+        let req = CloudRequest {
+            notify: Some(notify),
+            ..Default::default()
+        };
 
-        let ret = minreq::post(&self.config.user.hook_url)
+        let ret = minreq::post(&self.url)
             .with_timeout(REQUEST_TIMEOUT_SECS)
             .with_header("Authorization", &self.bearer)
             .with_json(&req)
@@ -124,9 +180,14 @@ impl<'a> CloudQuery<'a> {
     }
 
     pub fn authorize(&self, data: Value) -> Result<CloudVerdict> {
-        let req = CloudRequest::new(self.config, data)?;
+        let auth = CloudRequestAuth::new(self.config, data)?;
 
-        let res = minreq::post(&self.config.user.hook_url)
+        let req = CloudRequest {
+            auth: Some(auth),
+            ..Default::default()
+        };
+
+        let res = minreq::post(&self.url)
             .with_timeout(REQUEST_TIMEOUT_SECS)
             .with_header("Authorization", &self.bearer)
             .with_json(&req)
