@@ -67,8 +67,11 @@ struct Hook<'a> {
 }
 
 impl<'a> Hook<'a> {
-    pub fn new(config: &'a Config) -> Self {
-        let cloud = CloudQuery::new(config);
+    pub fn new(config: &'a Config) -> Result<Self> {
+        //
+        // This'll fail if we're not authorized
+        //
+        let cloud = CloudQuery::new(config).context("Unable to initialize Cloud API")?;
 
         let stdin = stdin();
         let stdout = stdout();
@@ -76,12 +79,12 @@ impl<'a> Hook<'a> {
         let reader = BufReader::new(stdin);
         let writer = BufWriter::new(stdout);
 
-        Self {
+        Ok(Self {
             config,
             cloud,
             reader,
             writer,
-        }
+        })
     }
 
     fn authorize_tool(&self, value: Value) -> HookDecision {
@@ -141,6 +144,8 @@ impl<'a> Hook<'a> {
 
     pub fn io_loop(&mut self) -> Result<()> {
         let mut line = String::new();
+
+        info!("Entering ioloop");
 
         loop {
             line.clear();
@@ -203,7 +208,7 @@ pub fn hook() -> Result<()> {
         bail!("not authorized");
     }
 
-    let mut hook = Hook::new(&config);
+    let mut hook = Hook::new(&config)?;
 
     hook.io_loop()
 }

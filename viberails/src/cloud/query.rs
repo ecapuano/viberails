@@ -2,7 +2,7 @@ use std::time::SystemTime;
 
 use anyhow::{Context, Result, bail};
 use derive_more::Display;
-use log::{error, warn};
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -55,13 +55,6 @@ fn find_session_id(data: &Value) -> Option<String> {
 
 impl<'a> CloudRequestMeta<'a> {
     pub fn new(config: &'a Config) -> Result<Self> {
-        //
-        // bail if we're not actually authorized
-        //
-        if !config.org.authorized() {
-            bail!("Not yet authorized")
-        }
-
         let ts = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .context("Unable to get current timestamp")?
@@ -94,11 +87,23 @@ impl<'a> CloudRequest<'a> {
 
 pub struct CloudQuery<'a> {
     config: &'a Config,
+    bearer: String,
 }
 
 impl<'a> CloudQuery<'a> {
-    pub fn new(config: &'a Config) -> Self {
-        Self { config }
+    pub fn new(config: &'a Config) -> Result<Self> {
+        //
+        // bail if we're not actually yet authorized
+        //
+        if !config.org.authorized() {
+            bail!("Not yet authorized")
+        }
+
+        info!("Authorized for oid={}", config.org.oid);
+
+        let bearer = format!("Bearer {}", config.org.jwt);
+
+        Ok(Self { config, bearer })
     }
 
     pub fn notify(&self, data: Value) -> Result<()> {
@@ -106,6 +111,7 @@ impl<'a> CloudQuery<'a> {
 
         let ret = minreq::post(&self.config.user.notification_url)
             .with_timeout(REQUEST_TIMEOUT_SECS)
+            .with_header("Authorization", &self.bearer)
             .with_json(&req)
             .context("Failed to serialize notification request")?
             .send();
@@ -125,6 +131,7 @@ impl<'a> CloudQuery<'a> {
 
         let res = minreq::post(&self.config.user.authorize_url)
             .with_timeout(REQUEST_TIMEOUT_SECS)
+            .with_header("Authorization", &self.bearer)
             .with_json(&req)
             .context("Failed to serialize authorization request")?
             .send()
