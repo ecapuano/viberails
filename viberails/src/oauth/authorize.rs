@@ -6,6 +6,7 @@
 
 use anyhow::{Context, Result, anyhow};
 use log::{debug, error, info, warn};
+use rust_embed::Embed;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::net::TcpListener;
@@ -14,6 +15,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tiny_http::{Response, Server};
 use url::Url;
+
+#[derive(Embed)]
+#[folder = "resources/oauth/"]
+struct OAuthAssets;
 
 /// Firebase API key (public key - not a secret)
 const FIREBASE_API_KEY: &str = "AIzaSyB5VyO6qS-XlnVD3zOIuEVNBD5JFn22_1w";
@@ -30,7 +35,7 @@ const OAUTH_CALLBACK_TIMEOUT: u64 = 300;
 const PREFERRED_PORTS: &[u16] = &[8085, 8086, 8087, 8088, 8089];
 
 /// OAuth provider identifiers
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, clap::ValueEnum)]
 pub enum OAuthProvider {
     #[default]
     Google,
@@ -265,8 +270,9 @@ fn run_callback_server(server: Server, tx: Sender<CallbackResult>) {
                 let params: HashMap<_, _> = parsed.query_pairs().collect();
 
                 if params.contains_key("code") {
-                    // Success - send HTML response
-                    let html = success_html();
+                    // Callback received - send pending HTML response
+                    // (MFA verification may still be required in terminal)
+                    let html = callback_html();
                     let response = Response::from_string(html).with_header(
                         tiny_http::Header::from_bytes(
                             &b"Content-Type"[..],
@@ -690,180 +696,16 @@ fn open_browser(url: &str) -> Result<()> {
     Ok(())
 }
 
-/// Generate success HTML page
-fn success_html() -> String {
-    r#"<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>LimaCharlie - Authentication Successful</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #00030C;
-            color: #ffffff;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background-image:
-                radial-gradient(circle at 20% 50%, rgba(74, 144, 226, 0.1) 0%, transparent 50%),
-                radial-gradient(circle at 80% 80%, rgba(226, 74, 144, 0.08) 0%, transparent 50%);
-        }
-        .container {
-            text-align: center;
-            padding: 60px 40px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 16px;
-            backdrop-filter: blur(24px);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            max-width: 500px;
-            width: 90%;
-        }
-        .success-icon {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 30px;
-            background: linear-gradient(135deg, #4A90E2 0%, #A74AE2 100%);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 40px;
-            box-shadow: 0 4px 20px rgba(74, 144, 226, 0.4);
-        }
-        .title {
-            font-size: 28px;
-            font-weight: 500;
-            margin-bottom: 16px;
-        }
-        .message {
-            font-size: 16px;
-            color: rgba(255, 255, 255, 0.7);
-            line-height: 1.6;
-            margin-bottom: 40px;
-        }
-        .cli-hint {
-            margin-top: 40px;
-            padding: 16px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-            color: #4A90E2;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="success-icon">&#10003;</div>
-        <h1 class="title">Authentication Successful</h1>
-        <p class="message">
-            You've been successfully authenticated.<br>
-            Your credentials have been securely stored.
-        </p>
-        <p class="message">You can safely close this browser window/tab.</p>
-        <div class="cli-hint">Return to your terminal to continue</div>
-    </div>
-</body>
-</html>"#
-        .to_string()
+/// Generate callback received HTML page (shown while MFA may still be pending)
+fn callback_html() -> String {
+    OAuthAssets::get("callback.html")
+        .map(|file| String::from_utf8_lossy(&file.data).into_owned())
+        .unwrap_or_else(|| "Authentication received. Check your terminal to continue.".to_string())
 }
 
 /// Generate error HTML page
 fn error_html(error_msg: &str) -> String {
-    format!(
-        r#"<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>LimaCharlie - Authentication Error</title>
-    <style>
-        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #00030C;
-            color: #ffffff;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background-image:
-                radial-gradient(circle at 20% 50%, rgba(226, 74, 74, 0.1) 0%, transparent 50%),
-                radial-gradient(circle at 80% 80%, rgba(226, 74, 74, 0.08) 0%, transparent 50%);
-        }}
-        .container {{
-            text-align: center;
-            padding: 60px 40px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 16px;
-            backdrop-filter: blur(24px);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            max-width: 500px;
-            width: 90%;
-        }}
-        .error-icon {{
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 30px;
-            background: linear-gradient(135deg, #E24A4A 0%, #F02463 100%);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 40px;
-            box-shadow: 0 4px 20px rgba(226, 74, 74, 0.4);
-        }}
-        .title {{
-            font-size: 28px;
-            font-weight: 500;
-            margin-bottom: 16px;
-        }}
-        .error-message {{
-            font-size: 16px;
-            color: #E24A4A;
-            margin-bottom: 16px;
-            padding: 12px 20px;
-            background: rgba(226, 74, 74, 0.1);
-            border: 1px solid rgba(226, 74, 74, 0.2);
-            border-radius: 8px;
-            font-family: 'Courier New', monospace;
-        }}
-        .message {{
-            font-size: 16px;
-            color: rgba(255, 255, 255, 0.7);
-            line-height: 1.6;
-            margin-bottom: 40px;
-        }}
-        .cli-hint {{
-            margin-top: 40px;
-            padding: 16px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-            color: #4A90E2;
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="error-icon">&#10007;</div>
-        <h1 class="title">Authentication Failed</h1>
-        <div class="error-message">{error_msg}</div>
-        <p class="message">
-            The authentication process encountered an error.<br>
-            Please return to your terminal and try again.
-        </p>
-        <p class="message">You can close this browser window/tab.</p>
-        <div class="cli-hint">Return to your terminal to retry</div>
-    </div>
-</body>
-</html>"#
-    )
+    OAuthAssets::get("error.html")
+        .map(|file| String::from_utf8_lossy(&file.data).replace("{{ERROR_MESSAGE}}", error_msg))
+        .unwrap_or_else(|| format!("Authentication failed: {error_msg}"))
 }

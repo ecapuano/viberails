@@ -14,7 +14,7 @@ use crate::{
     config::{ConfigureArgs, configure, show_configuration},
     hooks::{hook, install, list, uninstall},
     logging::Logging,
-    oauth::{AuthorizeConfig, authorize},
+    oauth::{AuthorizeConfig, OAuthProvider, authorize},
 };
 
 #[derive(Parser)]
@@ -28,10 +28,21 @@ pub struct UserArgs {
     verbose: bool,
 }
 
+#[derive(clap::Args)]
+struct LoginArgs {
+    /// OAuth provider to use
+    #[arg(long, short, default_value = "google")]
+    provider: OAuthProvider,
+
+    /// Print the URL instead of opening a browser
+    #[arg(long)]
+    no_browser: bool,
+}
+
 #[derive(Subcommand)]
 enum Command {
     /// Login via OAuth
-    Login,
+    Login(LoginArgs),
 
     /// Configure
     Configure(Box<ConfigureArgs>),
@@ -69,7 +80,11 @@ fn main() -> Result<()> {
         Some(Command::List) => list(),
         Some(Command::Configure(a)) => configure(&a),
         Some(Command::ShowConfiguration) => show_configuration(),
-        Some(Command::Login) => authorize(AuthorizeConfig::default()).map(|_| ()),
+        Some(Command::Login(args)) => authorize(AuthorizeConfig {
+            provider: args.provider,
+            no_browser: args.no_browser,
+        })
+        .map(|_| ()),
         _ => hook(),
     }
 }
