@@ -36,7 +36,6 @@ fn default_hook_url() -> Url {
 
 #[derive(Serialize, Deserialize, Builder, Tabled)]
 pub struct UserConfig {
-    pub hook_url: String,
     pub fail_open: bool,
 }
 
@@ -45,6 +44,7 @@ pub struct LcOrg {
     pub oid: String,
     pub jwt: String,
     pub name: String,
+    pub url: String,
 }
 
 impl Tabled for LcOrg {
@@ -80,10 +80,7 @@ impl LcOrg {
 
 impl Default for UserConfig {
     fn default() -> Self {
-        Self {
-            hook_url: get_embedded_default("default_hook_url"),
-            fail_open: true,
-        }
+        Self { fail_open: true }
     }
 }
 
@@ -205,10 +202,7 @@ pub fn show_configuration() -> Result<()> {
 }
 
 pub fn configure(args: &ConfigureArgs) -> Result<()> {
-    let user = UserConfig::builder()
-        .hook_url(args.hook_url.to_string())
-        .fail_open(args.fail_open)
-        .build();
+    let user = UserConfig::builder().fail_open(args.fail_open).build();
 
     let mut config = Config::load()?;
 

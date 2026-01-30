@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use bon::Builder;
 use serde::Deserialize;
 
 use crate::cloud::REQUEST_TIMEOUT_SECS;
@@ -90,4 +91,82 @@ where
         .context("Unable to deserialize org creation response")?;
 
     Ok(resp.data.oid)
+}
+
+#[derive(Builder)]
+pub struct OutputCreate<'a> {
+    token: &'a str,
+    oid: &'a str,
+    name: &'a str,
+    module: &'a str,
+    output_type: &'a str,
+    dest_host: &'a str,
+}
+
+impl OutputCreate<'_> {
+    pub fn create(&self) -> Result<()> {
+        let url = format!("{LC_API_URL}/outputs/{}", self.oid);
+        let bearer = format!("Bearer {}", self.token);
+
+        let body = format!(
+            "name={}&module={}&type={}&dest_host={}",
+            self.name, self.module, self.output_type, self.dest_host
+        );
+
+        let res = minreq::post(&url)
+            .with_timeout(REQUEST_TIMEOUT_SECS)
+            .with_header("Authorization", bearer)
+            .with_header("Content-Type", "application/x-www-form-urlencoded")
+            .with_body(body)
+            .send()
+            .with_context(|| format!("Failed to create output at {url}"))?;
+
+        if res.status_code >= 400 {
+            let error_body = res.as_str().unwrap_or("Unknown error");
+            anyhow::bail!(
+                "Output creation failed with status {}: {}",
+                res.status_code,
+                error_body
+            );
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct OrgUrlsResponse {
+    url: OrgUrls,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OrgUrls {
+    pub hooks: Option<String>,
+}
+
+pub fn get_org_urls<O>(oid: O) -> Result<OrgUrls>
+where
+    O: AsRef<str>,
+{
+    let url = format!("{LC_API_URL}/orgs/{}/url", oid.as_ref());
+
+    let res = minreq::get(&url)
+        .with_timeout(REQUEST_TIMEOUT_SECS)
+        .send()
+        .with_context(|| format!("Failed to get org URLs from {url}"))?;
+
+    if res.status_code >= 400 {
+        let error_body = res.as_str().unwrap_or("Unknown error");
+        anyhow::bail!(
+            "Get org URLs failed with status {}: {}",
+            res.status_code,
+            error_body
+        );
+    }
+
+    let resp: OrgUrlsResponse = res
+        .json()
+        .context("Unable to deserialize org URLs response")?;
+
+    Ok(resp.url)
 }

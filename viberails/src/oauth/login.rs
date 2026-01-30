@@ -6,7 +6,7 @@ use inquire::Text;
 use log::info;
 
 use crate::{
-    cloud::lc_api::{get_jwt_firebase, org_available, org_create},
+    cloud::lc_api::{OutputCreate, get_jwt_firebase, get_org_urls, org_available, org_create},
     config::{Config, LcOrg},
     oauth::{LoginArgs, authorize},
 };
@@ -72,6 +72,38 @@ fn wait_for_org(oid: &str, token: &str) -> Result<String> {
     }
 }
 
+fn create_web_hook(oid: &str, jwt: &str, dest_url: &str) -> Result<String> {
+    //
+    // Create webhook output for detections
+    //
+    info!("Creating webhook output for oid={oid}");
+    OutputCreate::builder()
+        .token(jwt)
+        .oid(oid)
+        .name("detections-vr")
+        .module("webhook")
+        .output_type("detect")
+        .dest_host(dest_url)
+        .build()
+        .create()
+        .context("Failed to create webhook output")?;
+
+    info!("Webhook output created successfully");
+
+    //
+    // Query org URLs to get the hook URL
+    //
+    info!("Querying org URLs for oid={oid}");
+    let urls = get_org_urls(oid).context("Failed to get org URLs")?;
+    info!("Org URLs: {:?}", urls);
+
+    let hook = urls
+        .hooks
+        .context("Hook URL not available for this organization")?;
+
+    Ok(hook)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Public
 ////////////////////////////////////////////////////////////////////////////////
@@ -114,6 +146,8 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     let jwt = wait_for_org(&oid, &login.id_token)?;
     info!("received token");
 
+    let url = create_web_hook(&oid, &jwt, "hello")?;
+
     //
     // save the token to the config file
     //
@@ -123,6 +157,7 @@ pub fn login(args: &LoginArgs) -> Result<()> {
         oid,
         jwt,
         name: org_name,
+        url,
     };
     config.org = org;
     config.save()?;
