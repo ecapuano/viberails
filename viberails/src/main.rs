@@ -14,7 +14,7 @@ use crate::{
     config::{ConfigureArgs, configure, show_configuration},
     hooks::{hook, install, list, uninstall},
     logging::Logging,
-    oauth::{LoginArgs, auth::authorize},
+    oauth::{LoginArgs, login::login},
 };
 
 #[derive(Parser)]
@@ -69,7 +69,7 @@ fn main() -> Result<()> {
         Some(Command::List) => list(),
         Some(Command::Configure(a)) => configure(&a),
         Some(Command::ShowConfiguration) => show_configuration(),
-        Some(Command::Login(args)) => authorize(&args),
+        Some(Command::Login(args)) => login(&args),
         _ => hook(),
     }
 }
