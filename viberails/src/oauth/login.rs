@@ -77,11 +77,15 @@ fn wait_for_org(oid: &str, token: &str) -> Result<String> {
 ////////////////////////////////////////////////////////////////////////////////
 
 pub fn login(args: &LoginArgs) -> Result<()> {
+    println!("Starting authentication...");
     let login = authorize(args)?;
+    println!("Authentication successful.");
 
+    println!("Requesting access token...");
     info!("requesting a JWT token");
     let jwt = get_jwt_firebase("-", &login.id_token).context("Unable to get JWT from FB TOKEN")?;
     info!("received token");
+    println!("Access token received.");
 
     //
     // Ask the user for the org name
@@ -96,20 +100,24 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     //
     // Creating the organization
     //
+    println!("Creating team '{org_name}'...");
     info!("Creating {org_name} org in {location}");
     let oid = org_create(&jwt, &org_name, location).context("Unable to create organization")?;
     info!("Org created oid={oid}");
+    println!("Team created.");
 
     //
     // get the final token
     //
+    println!("Finalizing setup...");
     info!("requesting a JWT token for {oid}");
-    info!("received token");
     let jwt = wait_for_org(&oid, &login.id_token)?;
+    info!("received token");
 
     //
     // save the token to the config file
     //
+    println!("Saving configuration...");
     let mut config = Config::load()?;
     let org = LcOrg {
         oid,
@@ -117,5 +125,10 @@ pub fn login(args: &LoginArgs) -> Result<()> {
         name: org_name,
     };
     config.org = org;
-    config.save()
+    config.save()?;
+
+    println!();
+    println!("{}", "Login complete! You are now authenticated.".green());
+
+    Ok(())
 }
