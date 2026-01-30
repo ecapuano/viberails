@@ -12,6 +12,13 @@ use crate::{
     providers::Providers,
 };
 
+#[derive(Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CloudQueryType {
+    Auth,
+    Notify,
+}
+
 #[derive(Display)]
 pub enum CloudVerdict {
     Allow,
@@ -34,7 +41,9 @@ struct CloudRequestMeta<'a> {
     request_id: String,
     hostname: Option<String>,
     session_id: Option<String>,
-    provider: &'a Providers,
+    source: &'a Providers,
+    #[serde(rename = "type")]
+    query_type: CloudQueryType,
 }
 
 #[derive(Serialize)]
@@ -74,7 +83,8 @@ impl<'a> CloudRequestMeta<'a> {
     pub fn new(
         config: &'a Config,
         session_id: Option<String>,
-        provider: &'a Providers,
+        source: &'a Providers,
+        query_type: CloudQueryType,
     ) -> Result<Self> {
         let ts = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -102,7 +112,8 @@ impl<'a> CloudRequestMeta<'a> {
             request_id,
             hostname,
             session_id,
-            provider,
+            source,
+            query_type,
         })
     }
 }
@@ -133,7 +144,12 @@ impl<'a> CloudQuery<'a> {
     pub fn notify(&self, data: Value) -> Result<()> {
         let session_id = mine_session_id(&data);
 
-        let meta_data = CloudRequestMeta::new(self.config, session_id, &self.provider)?;
+        let meta_data = CloudRequestMeta::new(
+            self.config,
+            session_id,
+            &self.provider,
+            CloudQueryType::Notify,
+        )?;
         let req = CloudRequest {
             meta_data,
             notify: Some(data),
@@ -158,7 +174,12 @@ impl<'a> CloudQuery<'a> {
     pub fn authorize(&self, data: Value) -> Result<CloudVerdict> {
         let session_id = mine_session_id(&data);
 
-        let meta_data = CloudRequestMeta::new(self.config, session_id, &self.provider)?;
+        let meta_data = CloudRequestMeta::new(
+            self.config,
+            session_id,
+            &self.provider,
+            CloudQueryType::Auth,
+        )?;
 
         let req = CloudRequest {
             meta_data,
