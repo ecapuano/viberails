@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use anyhow::{Context, Result};
 use colored::Colorize;
 use inquire::{Select, Text};
@@ -8,6 +10,8 @@ use crate::{
     config::{Config, LcOrg},
     oauth::{Location, LoginArgs, authorize},
 };
+
+const ORG_CREATE_TIMEOUT: Duration = Duration::from_mins(2);
 
 const LOCATIONS: &[Location] = &[
     Location::Canada,
@@ -64,6 +68,26 @@ fn query_org_name(args: &LoginArgs, token: &str) -> Result<String> {
     }
 }
 
+fn wait_for_org(oid: &str, token: &str) -> Result<String> {
+    use std::time::Instant;
+
+    let start = Instant::now();
+    let retry_interval = Duration::from_secs(5);
+
+    loop {
+        match get_jwt_firebase(oid, token) {
+            Ok(jwt) => return Ok(jwt),
+            Err(e) => {
+                if start.elapsed() >= ORG_CREATE_TIMEOUT {
+                    return Err(e).context("Unable to get JWT TOKEN (timed out after 2 minutes)");
+                }
+                info!("Waiting for org to be ready... retrying in 5 seconds");
+                std::thread::sleep(retry_interval);
+            }
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Public
 ////////////////////////////////////////////////////////////////////////////////
@@ -97,16 +121,13 @@ pub fn login(args: &LoginArgs) -> Result<()> {
         .context("Unable to create organization")?;
     info!("Org created oid={oid}");
 
-    /*
     //
     // get the final token
     //
     info!("requesting a JWT token for {oid}");
-    let jwt = get_jwt(oid, login.id_token).context("Unable to get JWT TOKEN")?;
     info!("received token");
-
+    let jwt = wait_for_org(&oid, &login.id_token)?;
     println!("token: {jwt}");
-    */
 
     //
     // save the token to the config file
