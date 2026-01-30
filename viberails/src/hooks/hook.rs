@@ -129,74 +129,47 @@ impl<'a> Hook<'a> {
         Ok(())
     }
 
-    fn accept(&mut self) -> Result<()> {
-        self.write_decision(HookDecision::Approve)
-    }
-
-    fn deny(&mut self) -> Result<()> {
-        self.write_decision(HookDecision::Block("Internal Failure".to_string()))
-    }
-
-    fn failure_callback(&mut self) -> Result<()> {
-        if self.config.user.fail_open {
-            self.accept()
-        } else {
-            self.deny()
-        }
-    }
-
-    pub fn io_loop(&mut self) -> Result<()> {
+    pub fn wait_for_input(&mut self) -> Result<()> {
         let mut line = String::new();
 
-        info!("Entering ioloop");
+        info!("Wating for input");
 
-        loop {
-            line.clear();
+        // that's a fatal error
+        let len = self
+            .reader
+            .read_line(&mut line)
+            .context("Unable to read from stdin")?;
 
-            // that's a fatal error
-            let len = self
-                .reader
-                .read_line(&mut line)
-                .context("Unable to read from stdin")?;
-
-            if 0 == len {
-                // that's still successful, out input just got closed
-                warn!("EOF. We're leaving");
-                break; // EOF
-            }
-
-            let Ok(value) = serde_json::from_str(&line) else {
-                error!("Unable to parse {line}");
-                self.failure_callback()?;
-                continue;
-            };
-
-            let start = Instant::now();
-
-            let decision = if is_tool_use(&value) {
-                //
-                // D&R Path
-                //
-                self.authorize_tool(value)
-            } else {
-                //
-                // This is best effort
-                //
-                if let Err(e) = self.cloud.notify(value) {
-                    error!("Unable to notify cloud ({e})");
-                }
-                //
-                // Notification path ( fire and forget )
-                //
-                HookDecision::Approve
-            };
-
-            let duration = start.elapsed().as_millis();
-
-            info!("Desision={decision} duration={duration}ms");
-
-            self.write_decision(decision)?;
+        if 0 == len {
+            // that's still successful, out input just got closed
+            warn!("EOF. We're leaving");
+            return Ok(());
         }
+
+        let value = serde_json::from_str(&line).context("Unable to deserialize")?;
+
+        let start = Instant::now();
+
+        if is_tool_use(&value) {
+            //
+            // D&R Path
+            //
+            let decision = self.authorize_tool(value);
+
+            info!("Desision={decision}");
+            self.write_decision(decision)?;
+        } else {
+            //
+            // This is best effort
+            //
+            if let Err(e) = self.cloud.notify(value) {
+                error!("Unable to notify cloud ({e})");
+            }
+        };
+
+        let duration = start.elapsed().as_millis();
+
+        info!("duration={duration}ms");
 
         Ok(())
     }
@@ -213,5 +186,5 @@ pub fn hook() -> Result<()> {
 
     let mut hook = Hook::new(&config)?;
 
-    hook.io_loop()
+    hook.wait_for_input()
 }

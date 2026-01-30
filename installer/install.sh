@@ -47,8 +47,9 @@ do_install() {
     echo "Detected: ${os} ${arch}"
     echo "Downloading ${artifact_name}..."
 
-    # Create temp file
-    tmp_file="$(mktemp)"
+    # Create temp directory
+    tmp_dir="$(mktemp -d)"
+    tmp_file="${tmp_dir}/${artifact_name}"
 
     # Download binary
     if command -v curl &>/dev/null; then
@@ -71,8 +72,8 @@ do_install() {
     # Run install subcommand
     "$tmp_file" install
 
-    # Clean up temp file
-    rm -f "$tmp_file"
+    # Clean up temp directory
+    rm -rf "$tmp_dir"
 }
 
 do_uninstall() {
