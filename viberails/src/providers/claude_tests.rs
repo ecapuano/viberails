@@ -14,7 +14,10 @@ fn test_install_into_empty_json() {
     let hooks_arr = hooks.as_array().unwrap();
     assert_eq!(hooks_arr.len(), 1);
     assert_eq!(hooks_arr[0]["matcher"], "*");
-    assert_eq!(hooks_arr[0]["hooks"][0]["command"], "/usr/bin/test-program");
+    assert_eq!(
+        hooks_arr[0]["hooks"][0]["command"],
+        "/usr/bin/test-program claude-callback"
+    );
     assert_eq!(hooks_arr[0]["hooks"][0]["type"], "command");
 }
 
@@ -56,7 +59,10 @@ fn test_install_into_existing_hook_type_with_different_matcher() {
     // Should have 2 entries: new wildcard matcher inserted at front + existing Bash matcher
     assert_eq!(hooks_arr.len(), 2);
     assert_eq!(hooks_arr[0]["matcher"], "*");
-    assert_eq!(hooks_arr[0]["hooks"][0]["command"], "/usr/bin/test-program");
+    assert_eq!(
+        hooks_arr[0]["hooks"][0]["command"],
+        "/usr/bin/test-program claude-callback"
+    );
     assert_eq!(hooks_arr[1]["matcher"], "Bash");
 }
 
@@ -85,7 +91,10 @@ fn test_install_into_prepends_to_existing_wildcard_matcher() {
     // But the inner hooks array should have 2 entries, with our hook inserted at front
     let inner_hooks = hooks_arr[0]["hooks"].as_array().unwrap();
     assert_eq!(inner_hooks.len(), 2);
-    assert_eq!(inner_hooks[0]["command"], "/usr/bin/test-program");
+    assert_eq!(
+        inner_hooks[0]["command"],
+        "/usr/bin/test-program claude-callback"
+    );
     assert_eq!(inner_hooks[1]["command"], "/existing/program");
 }
 
@@ -98,7 +107,7 @@ fn test_install_into_skips_if_already_installed() {
                 {
                     "matcher": "*",
                     "hooks": [
-                        {"type": "command", "command": "/usr/bin/test-program"}
+                        {"type": "command", "command": "/usr/bin/test-program claude-callback"}
                     ]
                 }
             ]
@@ -156,7 +165,7 @@ fn test_uninstall_from_removes_our_hook() {
                 {
                     "matcher": "*",
                     "hooks": [
-                        {"type": "command", "command": "/usr/bin/test-program"}
+                        {"type": "command", "command": "/usr/bin/test-program claude-callback"}
                     ]
                 }
             ]
@@ -181,7 +190,7 @@ fn test_uninstall_from_preserves_other_hooks() {
                     "matcher": "*",
                     "hooks": [
                         {"type": "command", "command": "/other/program"},
-                        {"type": "command", "command": "/usr/bin/test-program"},
+                        {"type": "command", "command": "/usr/bin/test-program claude-callback"},
                         {"type": "command", "command": "/another/program"}
                     ]
                 }
@@ -281,7 +290,7 @@ fn test_uninstall_from_different_hook_types() {
                 {
                     "matcher": "*",
                     "hooks": [
-                        {"type": "command", "command": "/usr/bin/test-program"}
+                        {"type": "command", "command": "/usr/bin/test-program claude-callback"}
                     ]
                 }
             ],
@@ -289,7 +298,7 @@ fn test_uninstall_from_different_hook_types() {
                 {
                     "matcher": "*",
                     "hooks": [
-                        {"type": "command", "command": "/usr/bin/test-program"}
+                        {"type": "command", "command": "/usr/bin/test-program claude-callback"}
                     ]
                 }
             ]
