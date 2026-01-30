@@ -2,7 +2,6 @@
 set -euo pipefail
 
 BASE_URL="http://localhost:8000"
-INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 BINARY_NAME="viberails"
 
 # Detect OS
@@ -30,7 +29,7 @@ detect_arch() {
     esac
 }
 
-main() {
+do_install() {
     local os arch artifact_name download_url
 
     os="$(detect_os)"
@@ -48,35 +47,55 @@ main() {
     echo "Detected: ${os} ${arch}"
     echo "Downloading ${artifact_name}..."
 
-    # Create temp directory
-    tmp_dir="$(mktemp -d)"
-    trap 'rm -rf "$tmp_dir"' EXIT
+    # Create temp file
+    tmp_file="$(mktemp)"
 
     # Download binary
     if command -v curl &>/dev/null; then
-        curl -fsSL "$download_url" -o "${tmp_dir}/${BINARY_NAME}"
+        curl -fsSL "$download_url" -o "$tmp_file"
     elif command -v wget &>/dev/null; then
-        wget -q "$download_url" -O "${tmp_dir}/${BINARY_NAME}"
+        wget -q "$download_url" -O "$tmp_file"
     else
         echo "Error: curl or wget is required" >&2
         exit 1
     fi
 
     # Make executable
-    chmod +x "${tmp_dir}/${BINARY_NAME}"
+    chmod +x "$tmp_file"
 
-    # Install
-    if [ -w "$INSTALL_DIR" ]; then
-        mv "${tmp_dir}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
-    else
-        echo "Installing to ${INSTALL_DIR} (requires sudo)..."
-        sudo mv "${tmp_dir}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
-    fi
-
-    echo "Successfully installed ${BINARY_NAME} to ${INSTALL_DIR}/${BINARY_NAME}"
+    echo "Successfully downloaded ${BINARY_NAME}"
 
     # Run login subcommand
-    "${INSTALL_DIR}/${BINARY_NAME}" login
+    "$tmp_file" login
+
+    # Run install subcommand
+    "$tmp_file" install
+
+    # Clean up temp file
+    rm -f "$tmp_file"
 }
 
-main
+do_uninstall() {
+    echo "Uninstall is not supported (binary is not permanently installed)"
+    exit 1
+}
+
+main() {
+    local command="${1:-install}"
+
+    case "$command" in
+        install)
+            do_install
+            ;;
+        uninstall)
+            do_uninstall
+            ;;
+        *)
+            echo "Error: Unknown command: $command" >&2
+            echo "Usage: $0 [install|uninstall]" >&2
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
