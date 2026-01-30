@@ -16,13 +16,14 @@ use crate::{
     hooks::{hook, install, list, uninstall},
     logging::Logging,
     oauth::{LoginArgs, login::login},
+    providers::Providers,
 };
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 pub struct UserArgs {
     #[command(subcommand)]
-    command: Option<Command>,
+    command: Command,
 
     /// Verbose
     #[arg(short, long)]
@@ -50,6 +51,10 @@ enum Command {
     /// List Hooks
     #[command(visible_alias = "ls")]
     List,
+
+    /// Claude Callback
+    #[command(visible_alias = "cc")]
+    ClaudeCallback,
 }
 
 fn init_logging(verbose: bool) -> Result<()> {
@@ -67,12 +72,12 @@ fn main() -> Result<()> {
     init_logging(args.verbose)?;
 
     match args.command {
-        Some(Command::Install) => install(),
-        Some(Command::Uninstall) => uninstall(),
-        Some(Command::List) => list(),
-        Some(Command::Configure(a)) => configure(&a),
-        Some(Command::ShowConfiguration) => show_configuration(),
-        Some(Command::Login(args)) => login(&args),
-        _ => hook(),
+        Command::Install => install(Providers::ClaudeCode),
+        Command::Uninstall => uninstall(),
+        Command::List => list(),
+        Command::Configure(a) => configure(&a),
+        Command::ShowConfiguration => show_configuration(),
+        Command::Login(args) => login(&args),
+        Command::ClaudeCallback => hook(Providers::ClaudeCode),
     }
 }

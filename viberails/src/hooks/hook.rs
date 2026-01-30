@@ -13,6 +13,7 @@ use crate::{
     cloud::query::{CloudQuery, CloudVerdict},
     common::PROJECT_NAME,
     config::Config,
+    providers::Providers,
 };
 
 const TOOL_HINTS: &[&str] = &["tool_input", "tool_name", "tool_use_id"];
@@ -68,11 +69,11 @@ struct Hook<'a> {
 }
 
 impl<'a> Hook<'a> {
-    pub fn new(config: &'a Config) -> Result<Self> {
+    pub fn new(config: &'a Config, provider: Providers) -> Result<Self> {
         //
         // This'll fail if we're not authorized
         //
-        let cloud = CloudQuery::new(config).context("Unable to initialize Cloud API")?;
+        let cloud = CloudQuery::new(config, provider).context("Unable to initialize Cloud API")?;
 
         let stdin = stdin();
         let stdout = stdout();
@@ -175,7 +176,7 @@ impl<'a> Hook<'a> {
     }
 }
 
-pub fn hook() -> Result<()> {
+pub fn hook(provider: Providers) -> Result<()> {
     info!("{PROJECT_NAME} is starting");
 
     let config = Config::load()?;
@@ -184,7 +185,7 @@ pub fn hook() -> Result<()> {
         bail!("not authorized");
     }
 
-    let mut hook = Hook::new(&config)?;
+    let mut hook = Hook::new(&config, provider)?;
 
     hook.wait_for_input()
 }

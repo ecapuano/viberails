@@ -7,7 +7,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::{cloud::REQUEST_TIMEOUT_SECS, common::display_authorize_help, config::Config};
+use crate::{
+    cloud::REQUEST_TIMEOUT_SECS, common::display_authorize_help, config::Config,
+    providers::Providers,
+};
 
 #[derive(Display)]
 pub enum CloudVerdict {
@@ -17,8 +20,11 @@ pub enum CloudVerdict {
 
 #[derive(Deserialize)]
 struct CloudResponse {
-    allow: bool,
-    reason: String,
+    success: bool,
+    reason: Option<String>,
+    //error: Option<String>,
+    //rejected: Option<String>,
+    //rule: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -28,6 +34,7 @@ struct CloudRequestMeta<'a> {
     request_id: String,
     hostname: Option<String>,
     session_id: Option<String>,
+    provider: &'a Providers,
 }
 
 #[derive(Serialize)]
@@ -41,8 +48,8 @@ struct CloudRequest<'a> {
 
 pub struct CloudQuery<'a> {
     config: &'a Config,
-    bearer: String,
     url: String,
+    provider: Providers,
 }
 
 fn mine_session_id(data: &Value) -> Option<String> {
@@ -64,7 +71,11 @@ fn mine_session_id(data: &Value) -> Option<String> {
 }
 
 impl<'a> CloudRequestMeta<'a> {
-    pub fn new(config: &'a Config, session_id: Option<String>) -> Result<Self> {
+    pub fn new(
+        config: &'a Config,
+        session_id: Option<String>,
+        provider: &'a Providers,
+    ) -> Result<Self> {
         let ts = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .context("Unable to get current timestamp")?
@@ -91,12 +102,13 @@ impl<'a> CloudRequestMeta<'a> {
             request_id,
             hostname,
             session_id,
+            provider,
         })
     }
 }
 
 impl<'a> CloudQuery<'a> {
-    pub fn new(config: &'a Config) -> Result<Self> {
+    pub fn new(config: &'a Config, provider: Providers) -> Result<Self> {
         //
         // bail if we're not actually yet authorized
         //
@@ -107,23 +119,21 @@ impl<'a> CloudQuery<'a> {
 
         info!("Authorized for oid={}", config.org.oid);
 
-        let bearer = format!("Bearer {}", config.org.jwt);
-
-        let url = format!("{}/{}/test-dr", config.org.url, config.org.oid);
+        let url = format!("{}", config.org.url);
 
         info!("Using url={url}");
 
         Ok(Self {
             config,
-            bearer,
             url,
+            provider,
         })
     }
 
     pub fn notify(&self, data: Value) -> Result<()> {
         let session_id = mine_session_id(&data);
 
-        let meta_data = CloudRequestMeta::new(self.config, session_id)?;
+        let meta_data = CloudRequestMeta::new(self.config, session_id, &self.provider)?;
         let req = CloudRequest {
             meta_data,
             notify: Some(data),
@@ -132,7 +142,6 @@ impl<'a> CloudQuery<'a> {
 
         let ret = minreq::post(&self.url)
             .with_timeout(REQUEST_TIMEOUT_SECS)
-            .with_header("Authorization", &self.bearer)
             .with_json(&req)
             .context("Failed to serialize notification request")?
             .send();
@@ -149,7 +158,7 @@ impl<'a> CloudQuery<'a> {
     pub fn authorize(&self, data: Value) -> Result<CloudVerdict> {
         let session_id = mine_session_id(&data);
 
-        let meta_data = CloudRequestMeta::new(self.config, session_id)?;
+        let meta_data = CloudRequestMeta::new(self.config, session_id, &self.provider)?;
 
         let req = CloudRequest {
             meta_data,
@@ -159,22 +168,31 @@ impl<'a> CloudQuery<'a> {
 
         let res = minreq::post(&self.url)
             .with_timeout(REQUEST_TIMEOUT_SECS)
-            .with_header("Authorization", &self.bearer)
             .with_json(&req)
             .context("Failed to serialize authorization request")?
             .send()
             .with_context(|| format!("Failed to connect to hook server at {}", self.url))?;
 
+        let data = res.as_str()?;
+
+        info!("cloud returned {data}");
+
         let data: CloudResponse = res
             .json()
             .context("Authorization server returned invalid JSON response")?;
 
-        info!("allow={} reason={}", data.allow, data.reason);
+        info!("allow={} reason={:?}", data.success, data.reason);
 
-        let verdict = if data.allow {
+        let verdict = if data.success {
             CloudVerdict::Allow
         } else {
-            CloudVerdict::Deny(data.reason)
+            let msg = if let Some(reason) = data.reason {
+                format!("deny reason: {reason}")
+            } else {
+                String::new()
+            };
+
+            CloudVerdict::Deny(msg)
         };
 
         Ok(verdict)

@@ -43,6 +43,11 @@ struct InstallationKeyResponse {
 }
 
 #[derive(Serialize)]
+struct HiveRecordUserMetaData {
+    enabled: bool,
+}
+
+#[derive(Serialize)]
 struct WebhookAdapterData<'a> {
     sensor_type: &'a str,
     webhook: WebhookConfig<'a>,
@@ -78,6 +83,7 @@ struct Identity<'a> {
 
 #[derive(Builder)]
 pub struct WebhookAdapter<'a> {
+    enabled: bool,
     token: &'a str,
     oid: &'a str,
     name: &'a str,
@@ -219,6 +225,7 @@ impl WebhookAdapter<'_> {
             "{LC_API_URL}/hive/cloud_sensor/{}/{}/data",
             self.oid, self.name
         );
+
         let bearer = format!("Bearer {}", self.token);
 
         let data = WebhookAdapterData {
@@ -242,9 +249,16 @@ impl WebhookAdapter<'_> {
             },
         };
 
+        let usr_mtd = HiveRecordUserMetaData {
+            enabled: self.enabled,
+        };
+
+        let usr_mtd_json =
+            serde_json::to_string(&usr_mtd).context("Failed to serialize webhook adapter data")?;
+
         let data_json =
             serde_json::to_string(&data).context("Failed to serialize webhook adapter data")?;
-        let body = format!("data={data_json}");
+        let body = format!("data={data_json}&usr_mtd={usr_mtd_json}");
 
         let res = minreq::post(&url)
             .with_timeout(REQUEST_TIMEOUT_SECS)

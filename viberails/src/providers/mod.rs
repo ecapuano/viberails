@@ -3,11 +3,13 @@ use anyhow::Result;
 pub mod claude;
 pub use claude::Claude;
 use derive_more::Display;
+use serde::Serialize;
 
 #[cfg(test)]
 mod claude_tests;
 
-#[derive(Clone, clap::ValueEnum, Display)]
+#[derive(Clone, clap::ValueEnum, Display, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Providers {
     ClaudeCode,
 }

@@ -29,14 +29,13 @@ pub struct UserConfig {
 #[derive(Default, Serialize, Deserialize)]
 pub struct LcOrg {
     pub oid: String,
-    pub jwt: String,
     pub name: String,
     pub url: String,
 }
 
 impl LcOrg {
     pub fn authorized(&self) -> bool {
-        !self.jwt.is_empty() && !self.oid.is_empty()
+        !self.url.is_empty() && !self.oid.is_empty()
     }
 }
 

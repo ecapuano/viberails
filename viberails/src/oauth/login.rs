@@ -120,6 +120,7 @@ fn create_web_hook(oid: &str, jwt: &str, install_id: &str) -> Result<String> {
         .secret(&secret)
         .installation_key(&installation_key)
         .sensor_seed_key(install_id)
+        .enabled(true)
         .build()
         .create()
         .context("Failed to create webhook adapter")?;
@@ -176,17 +177,15 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     let jwt = wait_for_org(&oid, &login.id_token)?;
     info!("received token");
 
-    let config = Config::load()?;
+    let mut config = Config::load()?;
     let url = create_web_hook(&oid, &jwt, &config.install_id)?;
 
     //
     // save the token to the config file
     //
     println!("Saving configuration...");
-    let mut config = Config::load()?;
     let org = LcOrg {
         oid,
-        jwt,
         name: org_name,
         url,
     };

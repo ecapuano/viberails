@@ -45,7 +45,7 @@ impl fmt::Display for InstallResult {
     }
 }
 
-fn install_hooks(program: &Path) -> Vec<InstallResult> {
+fn install_hooks(program: &Path, provider: Providers) -> Vec<InstallResult> {
     info!("Installing hooks");
 
     let mut results = vec![];
@@ -55,7 +55,7 @@ fn install_hooks(program: &Path) -> Vec<InstallResult> {
             let ret = claude.install(h);
 
             let result = InstallResult {
-                provider: Providers::ClaudeCode,
+                provider: provider.clone(),
                 hooktype: h,
                 result: ret,
             };
@@ -157,7 +157,7 @@ fn binary_location() -> Result<PathBuf> {
 // PIBLIC
 ////////////////////////////////////////////////////////////////////////////////
 
-pub fn install() -> Result<()> {
+pub fn install(provider: Providers) -> Result<()> {
     //
     // Make sure we're autorized, otherwise it'll fail silently
     //
@@ -177,7 +177,7 @@ pub fn install() -> Result<()> {
     let dst = binary_location()?;
     install_binary(&dst)?;
 
-    let results = install_hooks(&dst);
+    let results = install_hooks(&dst, provider);
 
     display_results(&results);
 

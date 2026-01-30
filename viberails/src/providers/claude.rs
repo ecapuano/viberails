@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use crate::providers::{HookEntry, LLmProviderTrait};
 
 pub struct Claude {
-    self_program: String,
+    command_line: String,
     settings: PathBuf,
 }
 
@@ -37,19 +37,10 @@ impl Claude {
 
         let settings = claude_dir.join("settings.json");
 
-        let self_program = self_program
-            .as_ref()
-            .to_str()
-            .ok_or_else(|| {
-                anyhow!(
-                    "Program path {} contains invalid UTF-8 characters",
-                    self_program.as_ref().display()
-                )
-            })?
-            .to_string();
+        let command_line = format!("{} claude-callback", self_program.as_ref().display());
 
         Ok(Self {
-            self_program,
+            command_line,
             settings,
         })
     }
@@ -99,7 +90,7 @@ impl Claude {
 
         let our_hook = json!({
             "type": "command",
-            "command": self.self_program
+            "command": &self.command_line,
         });
 
         if let Some(entry) = wildcard_entry {
@@ -117,7 +108,7 @@ impl Claude {
             // Check if already installed
             let already_installed = hooks_arr
                 .iter()
-                .any(|h| h.get("command").and_then(|c| c.as_str()) == Some(&self.self_program));
+                .any(|h| h.get("command").and_then(|c| c.as_str()) == Some(&self.command_line));
 
             if already_installed {
                 warn!("{hook_type} already exist in {}", self.settings.display());
@@ -179,7 +170,7 @@ impl Claude {
 
         // Remove our hook
         let original_len = hooks_arr.len();
-        hooks_arr.retain(|h| h.get("command").and_then(|c| c.as_str()) != Some(&self.self_program));
+        hooks_arr.retain(|h| h.get("command").and_then(|c| c.as_str()) != Some(&self.command_line));
 
         if hooks_arr.len() == original_len {
             warn!("{hook_type} hook not found in {}", self.settings.display());
