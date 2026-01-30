@@ -35,11 +35,11 @@ enum Command {
     Login(LoginArgs),
 
     /// Configure
-    #[command(alias = "config")]
+    #[command(visible_alias = "config")]
     Configure(Box<ConfigureArgs>),
 
     /// Show Config
-    #[command(alias = "show-config")]
+    #[command(visible_alias = "show-config")]
     ShowConfiguration,
 
     /// Install hooks
@@ -48,7 +48,7 @@ enum Command {
     Uninstall,
 
     /// List Hooks
-    #[command(alias = "ls")]
+    #[command(visible_alias = "ls")]
     List,
 }
 
