@@ -141,6 +141,8 @@ impl<'a> CloudQuery<'a> {
             error!("Notification to {} failed: {e}", self.url);
         }
 
+        info!("successfully sent the notification");
+
         Ok(())
     }
 
@@ -166,6 +168,8 @@ impl<'a> CloudQuery<'a> {
         let data: CloudResponse = res
             .json()
             .context("Authorization server returned invalid JSON response")?;
+
+        info!("allow={} reason={}", data.allow, data.reason);
 
         let verdict = if data.allow {
             CloudVerdict::Allow

@@ -19,15 +19,16 @@ const TOOL_HINTS: &[&str] = &["tool_input", "tool_name", "tool_use_id"];
 
 #[derive(Serialize, Display)]
 #[allow(dead_code)]
+#[serde(rename_all = "lowercase")]
 enum HookDecision {
     Block(String),
-    Allow,  // explicitly permit (skips further hooks)
-    Ignore, // no opinion (continue to next hook/permissions)
+    Approve,
 }
 
 #[derive(Serialize)]
 struct HookAnswer {
     decision: HookDecision,
+    #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
 }
 
@@ -92,7 +93,7 @@ impl<'a> Hook<'a> {
         // Do we fail-open?
         //
         match self.cloud.authorize(value) {
-            Ok(CloudVerdict::Allow) => HookDecision::Ignore,
+            Ok(CloudVerdict::Allow) => HookDecision::Approve,
             Ok(CloudVerdict::Deny(r)) => {
                 warn!("Deny reason: {r}");
                 HookDecision::Block(r)
@@ -101,7 +102,7 @@ impl<'a> Hook<'a> {
                 error!("cloud failed ({e})");
 
                 if self.config.user.fail_open {
-                    HookDecision::Ignore
+                    HookDecision::Approve
                 } else {
                     let msg = format!("{PROJECT_NAME} cloud failure ({e})");
                     HookDecision::Block(msg)
@@ -116,6 +117,8 @@ impl<'a> Hook<'a> {
         let resp_string =
             serde_json::to_string(&answer).context("Failed to serialize hook response")?;
 
+        info!("decision json: {resp_string}");
+
         self.writer
             .write_all(resp_string.as_bytes())
             .context("Failed to write hook response to stdout")?;
@@ -127,7 +130,7 @@ impl<'a> Hook<'a> {
     }
 
     fn accept(&mut self) -> Result<()> {
-        self.write_decision(HookDecision::Ignore)
+        self.write_decision(HookDecision::Approve)
     }
 
     fn deny(&mut self) -> Result<()> {
@@ -185,7 +188,7 @@ impl<'a> Hook<'a> {
                 //
                 // Notification path ( fire and forget )
                 //
-                HookDecision::Ignore
+                HookDecision::Approve
             };
 
             let duration = start.elapsed().as_millis();
