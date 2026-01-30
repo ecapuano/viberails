@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use bon::Builder;
 use serde::{Deserialize, Serialize};
 
-use crate::cloud::REQUEST_TIMEOUT_SECS;
+use crate::{cloud::REQUEST_TIMEOUT_SECS, common::PROJECT_NAME};
 
 const LC_JWT_URL: &str = "https://jwt.limacharlie.io";
 const LC_API_URL: &str = "https://api.limacharlie.io/v1";
@@ -143,7 +143,7 @@ where
     let url = format!("{LC_API_URL}/installationkeys/{}", oid.as_ref());
     let bearer = format!("Bearer {}", token.as_ref());
 
-    let body = format!("tags=viberails&desc={}", desc);
+    let body = format!("tags={PROJECT_NAME}&desc={}", desc);
 
     let res = minreq::post(&url)
         .with_timeout(REQUEST_TIMEOUT_SECS)

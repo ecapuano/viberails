@@ -8,30 +8,17 @@ use tabled::{
     Table, Tabled,
     settings::{Margin, Rotate, Style},
 };
-use url::Url;
 use uuid::Uuid;
 
 use crate::common::{print_header, project_config_dir};
-use crate::default::get_embedded_default;
 
 const CONFIG_FILE_NAME: &str = "config.json";
 
 #[derive(clap::Args)]
 pub struct ConfigureArgs {
-    /// Hook URL
-    #[arg(long, default_value_t = default_hook_url())]
-    hook_url: Url,
-
     /// Accept command on cloud failure
     #[arg(long, default_value_t = true)]
     fail_open: bool,
-}
-
-#[allow(clippy::expect_used)]
-fn default_hook_url() -> Url {
-    get_embedded_default("default_hook_url")
-        .parse()
-        .expect("valid hook URL")
 }
 
 #[derive(Serialize, Deserialize, Builder)]

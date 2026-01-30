@@ -94,9 +94,9 @@ fn create_web_hook(oid: &str, jwt: &str, install_id: &str) -> Result<String> {
     // Create an installation key for the webhook adapter
     //
     info!("Creating installation key for webhook adapter");
-    let installation_key =
-        create_installation_key(jwt, oid, "viberails webhook adapter installation key")
-            .context("Failed to create installation key")?;
+    let key_desc = format!("{PROJECT_NAME} webhook adapter installation key");
+    let installation_key = create_installation_key(jwt, oid, &key_desc)
+        .context("Failed to create installation key")?;
     info!("Installation key created: {installation_key}");
 
     //
