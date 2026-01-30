@@ -78,7 +78,7 @@ fn wait_for_org(oid: &str, token: &str) -> Result<String> {
 
 /// Creates a webhook adapter and returns the full webhook URL.
 ///
-/// The webhook URL format is: https://{hooks_domain}/{oid}/{adapter_name}/{secret}
+/// The webhook URL format is: <https://{hooks_domain}/{oid}/{adapter_name}/{secret}>
 fn create_web_hook(oid: &str, jwt: &str, install_id: &str) -> Result<String> {
     //
     // Query org URLs to get the hooks domain

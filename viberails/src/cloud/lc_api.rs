@@ -179,7 +179,7 @@ where
     let url = format!("{LC_API_URL}/installationkeys/{}", oid.as_ref());
     let bearer = format!("Bearer {}", token.as_ref());
 
-    let body = format!("tags={PROJECT_NAME}&desc={}", desc);
+    let body = format!("tags={PROJECT_NAME}&desc={desc}");
 
     let res = minreq::post(&url)
         .with_timeout(REQUEST_TIMEOUT_SECS)
@@ -231,7 +231,7 @@ impl WebhookAdapter<'_> {
 
         let data_json =
             serde_json::to_string(&data).context("Failed to serialize webhook adapter data")?;
-        let body = format!("data={}", data_json);
+        let body = format!("data={data_json}");
 
         let res = minreq::post(&url)
             .with_timeout(REQUEST_TIMEOUT_SECS)
