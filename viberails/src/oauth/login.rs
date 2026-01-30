@@ -112,7 +112,11 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     // save the token to the config file
     //
     let mut config = Config::load()?;
-    let org = LcOrg { oid, jwt };
+    let org = LcOrg {
+        oid,
+        jwt,
+        name: org_name,
+    };
     config.org = org;
     config.save()
 }

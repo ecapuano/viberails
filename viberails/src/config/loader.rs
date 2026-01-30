@@ -44,10 +44,11 @@ pub struct UserConfig {
 pub struct LcOrg {
     pub oid: String,
     pub jwt: String,
+    pub name: String,
 }
 
 impl Tabled for LcOrg {
-    const LENGTH: usize = 2;
+    const LENGTH: usize = 3;
 
     fn fields(&self) -> Vec<std::borrow::Cow<'_, str>> {
         let truncated_jwt = if self.jwt.len() > 36 {
@@ -58,13 +59,15 @@ impl Tabled for LcOrg {
         vec![
             std::borrow::Cow::Borrowed(&self.oid),
             std::borrow::Cow::Owned(truncated_jwt),
+            std::borrow::Cow::Borrowed(&self.name),
         ]
     }
 
     fn headers() -> Vec<std::borrow::Cow<'static, str>> {
         vec![
-            std::borrow::Cow::Borrowed("oid"),
-            std::borrow::Cow::Borrowed("jwt"),
+            std::borrow::Cow::Borrowed("Team Id"),
+            std::borrow::Cow::Borrowed("Token"),
+            std::borrow::Cow::Borrowed("Team Name"),
         ]
     }
 }

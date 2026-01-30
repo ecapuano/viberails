@@ -35,9 +35,11 @@ enum Command {
     Login(LoginArgs),
 
     /// Configure
+    #[command(alias = "config")]
     Configure(Box<ConfigureArgs>),
 
     /// Show Config
+    #[command(alias = "show-config")]
     ShowConfiguration,
 
     /// Install hooks
