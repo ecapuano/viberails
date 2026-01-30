@@ -29,7 +29,6 @@ pub struct ConfigureArgs {
 
 fn default_hook_url() -> Url {
     get_embedded_default("default_hook_url")
-        .expect("default_hook_url")
         .parse()
         .expect("valid hook URL")
 }
@@ -78,7 +77,7 @@ impl LcOrg {
 impl Default for UserConfig {
     fn default() -> Self {
         Self {
-            hook_url: get_embedded_default("default_hook_url").expect("default_hook_url"),
+            hook_url: get_embedded_default("default_hook_url"),
             fail_open: true,
         }
     }

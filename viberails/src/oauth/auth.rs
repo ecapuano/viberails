@@ -497,7 +497,7 @@ fn exchange_code_for_tokens(
     session_id: &str,
     provider: &OAuthProvider,
 ) -> Result<ExchangeResult> {
-    let api_key = get_embedded_default("firebase_api_key").expect("firebase_api_key");
+    let api_key = get_embedded_default("firebase_api_key");
     let url = format!("{SIGN_IN_WITH_IDP}?key={api_key}");
 
     info!("Exchanging OAuth callback with Firebase signInWithIdp");
@@ -576,7 +576,7 @@ fn exchange_code_for_tokens(
 
 /// Request auth URI from Firebase
 fn create_auth_uri(provider: &OAuthProvider, redirect_uri: &str) -> Result<(String, String)> {
-    let api_key = get_embedded_default("firebase_api_key").expect("firebase_api_key");
+    let api_key = get_embedded_default("firebase_api_key");
     let url = format!("{CREATE_AUTH_URI}?key={api_key}");
 
     info!(
@@ -623,7 +623,7 @@ fn finalize_mfa(
     provider: &OAuthProvider,
     local_id: Option<&str>,
 ) -> Result<OAuthTokens> {
-    let api_key = get_embedded_default("firebase_api_key").expect("firebase_api_key");
+    let api_key = get_embedded_default("firebase_api_key");
     let url = format!("{MFA_FINALIZE}?key={api_key}");
 
     info!("Finalizing MFA verification");
