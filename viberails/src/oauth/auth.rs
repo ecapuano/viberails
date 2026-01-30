@@ -33,32 +33,6 @@ const OAUTH_CALLBACK_TIMEOUT: u64 = 300;
 /// Preferred ports for OAuth callback server
 const PREFERRED_PORTS: &[u16] = &[8085, 8086, 8087, 8088, 8089];
 
-/// Available team locations
-#[derive(Debug, Clone, Copy, clap::ValueEnum, PartialEq, Eq)]
-pub enum Location {
-    Canada,
-    India,
-    Usa,
-    Europe,
-    Exp,
-    Uk,
-    Australia,
-}
-
-impl std::fmt::Display for Location {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Canada => write!(f, "canada"),
-            Self::India => write!(f, "india"),
-            Self::Usa => write!(f, "usa"),
-            Self::Europe => write!(f, "europe"),
-            Self::Exp => write!(f, "exp"),
-            Self::Uk => write!(f, "uk"),
-            Self::Australia => write!(f, "australia"),
-        }
-    }
-}
-
 /// OAuth provider identifiers
 #[derive(Debug, Clone, Copy, Default, clap::ValueEnum, PartialEq, Eq)]
 pub enum OAuthProvider {
@@ -203,18 +177,6 @@ pub struct LoginArgs {
     /// Print the URL instead of opening a browser
     #[arg(long)]
     pub no_browser: bool,
-
-    /// Team Name
-    #[arg(long)]
-    pub team_name: Option<String>,
-
-    /// Team Location
-    #[arg(long)]
-    pub team_location: Option<Location>,
-
-    /// JWT
-    #[arg(long)]
-    pub jwt: Option<String>,
 }
 
 /// Perform OAuth authorization flow.

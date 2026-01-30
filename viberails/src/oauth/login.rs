@@ -2,26 +2,17 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use colored::Colorize;
-use inquire::{Select, Text};
+use inquire::Text;
 use log::info;
 
 use crate::{
     cloud::lc_api::{get_jwt_firebase, org_available, org_create},
     config::{Config, LcOrg},
-    oauth::{Location, LoginArgs, authorize},
+    oauth::{LoginArgs, authorize},
 };
 
 const ORG_CREATE_TIMEOUT: Duration = Duration::from_mins(2);
-
-const LOCATIONS: &[Location] = &[
-    Location::Canada,
-    Location::India,
-    Location::Usa,
-    Location::Europe,
-    Location::Exp,
-    Location::Uk,
-    Location::Australia,
-];
+const ORG_DEFAULT_LOCATION: &str = "usa";
 
 fn query_user(prompt: &str) -> Result<String> {
     let input = Text::new(prompt)
@@ -37,25 +28,20 @@ fn query_user(prompt: &str) -> Result<String> {
         .prompt()
         .context("Failed to read user input")?;
 
+    //
+    // add a suffix for the org
+    //
+    let uuid = uuid::Uuid::new_v4().simple().to_string();
+    let suffix = uuid.get(..8).unwrap_or(&uuid);
+    let input = format!("{input}-{suffix}-vr");
+
     Ok(input)
 }
 
-fn query_location() -> Result<Location> {
-    let location = Select::new("Select location:", LOCATIONS.to_vec())
-        .prompt()
-        .context("Failed to select location")?;
-
-    Ok(location)
-}
-
-fn query_org_name(args: &LoginArgs, token: &str) -> Result<String> {
-    let mut org_name = if let Some(team_name) = &args.team_name {
-        team_name.clone()
-    } else {
-        query_user("Enter Team Name:")?
-    };
-
+fn query_org_name(token: &str) -> Result<String> {
     loop {
+        let org_name = query_user("Enter Team Name:")?;
+
         let available = org_available(token, &org_name)?;
 
         if available {
@@ -63,8 +49,6 @@ fn query_org_name(args: &LoginArgs, token: &str) -> Result<String> {
         }
 
         println!("{}", format!("{org_name} isn't available").red());
-
-        org_name = query_user("Enter Team Name:")?;
     }
 }
 
@@ -102,16 +86,12 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     //
     // Ask the user for the org name
     //
-    let org_name = query_org_name(args, &jwt)?;
+    let org_name = query_org_name(&jwt)?;
 
     //
     // It's an optional parameter
     //
-    let location = if let Some(loc) = args.team_location {
-        loc
-    } else {
-        query_location()?
-    };
+    let location = ORG_DEFAULT_LOCATION;
 
     //
     // Creating the organization
