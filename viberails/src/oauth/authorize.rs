@@ -119,6 +119,7 @@ struct MfaFactorInfo {
     #[serde(default)]
     totp_info: Option<serde_json::Value>,
     #[serde(default)]
+    #[allow(dead_code)] // Parsed from API response, kept for future SMS MFA support
     phone_info: Option<String>,
 }
 
