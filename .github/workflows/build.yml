@@ -48,6 +48,9 @@ jobs:
                     - os: windows-latest
                       target: x86_64-pc-windows-msvc
                       artifact: viberails-windows-x64
+                    - os: windows-latest
+                      target: aarch64-pc-windows-msvc
+                      artifact: viberails-windows-arm64
 
         runs-on: ${{ matrix.os }}
 
