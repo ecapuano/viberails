@@ -16,6 +16,10 @@ use crate::{
 };
 
 const ORG_CREATE_TIMEOUT: Duration = Duration::from_mins(2);
+
+#[cfg(debug_assertions)]
+const ORG_DEFAULT_LOCATION: &str = "exp";
+#[cfg(not(debug_assertions))]
 const ORG_DEFAULT_LOCATION: &str = "usa";
 
 fn query_user(prompt: &str) -> Result<String> {
