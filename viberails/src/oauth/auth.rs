@@ -16,12 +16,11 @@ use std::time::{Duration, Instant};
 use tiny_http::{Response, Server};
 use url::Url;
 
+use crate::default::get_embedded_default;
+
 #[derive(Embed)]
 #[folder = "resources/oauth/"]
 struct OAuthAssets;
-
-/// Firebase API key (public key - not a secret)
-const FIREBASE_API_KEY: &str = "AIzaSyB5VyO6qS-XlnVD3zOIuEVNBD5JFn22_1w";
 
 /// Firebase Auth API endpoints
 const CREATE_AUTH_URI: &str = "https://identitytoolkit.googleapis.com/v1/accounts:createAuthUri";
@@ -498,7 +497,8 @@ fn exchange_code_for_tokens(
     session_id: &str,
     provider: &OAuthProvider,
 ) -> Result<ExchangeResult> {
-    let url = format!("{SIGN_IN_WITH_IDP}?key={FIREBASE_API_KEY}");
+    let api_key = get_embedded_default("firebase_api_key").expect("firebase_api_key");
+    let url = format!("{SIGN_IN_WITH_IDP}?key={api_key}");
 
     info!("Exchanging OAuth callback with Firebase signInWithIdp");
 
@@ -576,7 +576,8 @@ fn exchange_code_for_tokens(
 
 /// Request auth URI from Firebase
 fn create_auth_uri(provider: &OAuthProvider, redirect_uri: &str) -> Result<(String, String)> {
-    let url = format!("{CREATE_AUTH_URI}?key={FIREBASE_API_KEY}");
+    let api_key = get_embedded_default("firebase_api_key").expect("firebase_api_key");
+    let url = format!("{CREATE_AUTH_URI}?key={api_key}");
 
     info!(
         "Creating auth URI for provider: {}",
@@ -622,7 +623,8 @@ fn finalize_mfa(
     provider: &OAuthProvider,
     local_id: Option<&str>,
 ) -> Result<OAuthTokens> {
-    let url = format!("{MFA_FINALIZE}?key={FIREBASE_API_KEY}");
+    let api_key = get_embedded_default("firebase_api_key").expect("firebase_api_key");
+    let url = format!("{MFA_FINALIZE}?key={api_key}");
 
     info!("Finalizing MFA verification");
 

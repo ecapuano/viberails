@@ -12,36 +12,31 @@ use url::Url;
 use uuid::Uuid;
 
 use crate::common::{print_header, project_config_dir};
+use crate::default::get_embedded_default;
 
 const CONFIG_FILE_NAME: &str = "config.json";
-const DEF_LOGIN_URL: &str = "http://localhost:8000/login";
-const DEF_AUTHORIZATION_URL: &str = "http://localhost:8000/dnr";
-const DEF_NOTIFICATION_URL: &str = "http://localhost:8000/notify";
 
 #[derive(clap::Args)]
 pub struct ConfigureArgs {
-    /// Authentication URL
-    #[arg(long, default_value = DEF_LOGIN_URL)]
-    login_url: Url,
-
-    /// Authorization URL
-    #[arg(long, default_value = DEF_AUTHORIZATION_URL)]
-    authorize_url: Url,
-
-    /// Notification URL
-    #[arg(long, default_value = DEF_NOTIFICATION_URL)]
-    notification_url: Url,
+    /// Hook URL
+    #[arg(long, default_value_t = default_hook_url())]
+    hook_url: Url,
 
     /// Accept command on cloud failure
     #[arg(long, default_value_t = true)]
     fail_open: bool,
 }
 
+fn default_hook_url() -> Url {
+    get_embedded_default("default_hook_url")
+        .expect("default_hook_url")
+        .parse()
+        .expect("valid hook URL")
+}
+
 #[derive(Serialize, Deserialize, Builder, Tabled)]
 pub struct UserConfig {
-    pub login_url: String,
-    pub authorize_url: String,
-    pub notification_url: String,
+    pub hook_url: String,
     pub fail_open: bool,
 }
 
@@ -60,9 +55,7 @@ impl LcOrg {
 impl Default for UserConfig {
     fn default() -> Self {
         Self {
-            login_url: DEF_LOGIN_URL.to_string(),
-            authorize_url: DEF_AUTHORIZATION_URL.to_string(),
-            notification_url: DEF_NOTIFICATION_URL.to_string(),
+            hook_url: get_embedded_default("default_hook_url").expect("default_hook_url"),
             fail_open: true,
         }
     }
@@ -187,9 +180,7 @@ pub fn show_configuration() -> Result<()> {
 
 pub fn configure(args: &ConfigureArgs) -> Result<()> {
     let user = UserConfig::builder()
-        .login_url(args.login_url.to_string())
-        .authorize_url(args.authorize_url.to_string())
-        .notification_url(args.notification_url.to_string())
+        .hook_url(args.hook_url.to_string())
         .fail_open(args.fail_open)
         .build();
 

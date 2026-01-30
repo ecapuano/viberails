@@ -127,7 +127,6 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     info!("requesting a JWT token for {oid}");
     info!("received token");
     let jwt = wait_for_org(&oid, &login.id_token)?;
-    println!("token: {jwt}");
 
     //
     // save the token to the config file

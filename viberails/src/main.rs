@@ -1,6 +1,7 @@
 mod cloud;
 mod common;
 mod config;
+mod default;
 mod hooks;
 mod logging;
 mod oauth;

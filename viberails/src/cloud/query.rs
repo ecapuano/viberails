@@ -109,7 +109,7 @@ impl<'a> CloudQuery<'a> {
     pub fn notify(&self, data: Value) -> Result<()> {
         let req = CloudRequest::new(self.config, data)?;
 
-        let ret = minreq::post(&self.config.user.notification_url)
+        let ret = minreq::post(&self.config.user.hook_url)
             .with_timeout(REQUEST_TIMEOUT_SECS)
             .with_header("Authorization", &self.bearer)
             .with_json(&req)
@@ -117,10 +117,7 @@ impl<'a> CloudQuery<'a> {
             .send();
 
         if let Err(e) = ret {
-            error!(
-                "Notification to {} failed: {e}",
-                self.config.user.notification_url
-            );
+            error!("Notification to {} failed: {e}", self.config.user.hook_url);
         }
 
         Ok(())
@@ -129,7 +126,7 @@ impl<'a> CloudQuery<'a> {
     pub fn authorize(&self, data: Value) -> Result<CloudVerdict> {
         let req = CloudRequest::new(self.config, data)?;
 
-        let res = minreq::post(&self.config.user.authorize_url)
+        let res = minreq::post(&self.config.user.hook_url)
             .with_timeout(REQUEST_TIMEOUT_SECS)
             .with_header("Authorization", &self.bearer)
             .with_json(&req)
@@ -137,8 +134,8 @@ impl<'a> CloudQuery<'a> {
             .send()
             .with_context(|| {
                 format!(
-                    "Failed to connect to authorization server at {}",
-                    self.config.user.authorize_url
+                    "Failed to connect to hook server at {}",
+                    self.config.user.hook_url
                 )
             })?;
 
