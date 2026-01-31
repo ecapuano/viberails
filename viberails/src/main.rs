@@ -98,7 +98,10 @@ fn main() -> Result<()> {
     match args.command {
         Command::Install => install(),
         Command::Uninstall => uninstall(),
-        Command::List => list(),
+        Command::List => {
+            list();
+            Ok(())
+        }
         Command::Configure(a) => configure(&a),
         Command::ShowConfiguration => show_configuration(),
         Command::InitTeam(args) => login(&args),

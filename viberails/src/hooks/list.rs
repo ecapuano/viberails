@@ -1,11 +1,9 @@
-use anyhow::Result;
-
 use crate::{common::print_header, providers::ProviderRegistry};
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-pub fn list() -> Result<()> {
+pub fn list() {
     let registry = ProviderRegistry::new();
 
     print_header();
@@ -46,6 +44,4 @@ pub fn list() -> Result<()> {
             }
         }
     }
-
-    Ok(())
 }
