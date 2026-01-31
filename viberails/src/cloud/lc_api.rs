@@ -199,8 +199,8 @@ where
     // For other errors, log but don't fail - the JWT endpoint will give a clearer error
     // if there's actually a problem
     if res.status_code >= 400 {
-        log::warn!(
-            "signUp returned status {}: {}",
+        log::error!(
+            "signUp returned unexpected status {}: {}",
             res.status_code,
             response_body
         );
