@@ -11,36 +11,35 @@ use serde_json::{Value, json};
 use crate::providers::discovery::{DiscoveryResult, ProviderDiscovery, ProviderFactory};
 use crate::providers::{HookEntry, LLmProviderTrait};
 
-/// Supported hooks for Claude Code
-pub const CLAUDE_HOOKS: &[&str] = &["PreToolUse", "UserPromptSubmit"];
+/// Supported hooks for Gemini CLI
+/// Based on <https://github.com/google-gemini/gemini-cli>
+pub const GEMINI_HOOKS: &[&str] = &["BeforeTool", "SessionStart"];
 
-/// Discovery implementation for Claude Code.
-/// This struct handles checking whether Claude Code is installed
-/// without any side effects.
-pub struct ClaudeDiscovery;
+/// Discovery implementation for Gemini CLI.
+pub struct GeminiDiscovery;
 
-impl ClaudeDiscovery {
-    /// Get the Claude config directory path.
-    fn claude_dir() -> Option<PathBuf> {
-        dirs::home_dir().map(|h| h.join(".claude"))
+impl GeminiDiscovery {
+    /// Get the Gemini CLI config directory path.
+    fn gemini_dir() -> Option<PathBuf> {
+        dirs::home_dir().map(|h| h.join(".gemini"))
     }
 }
 
-impl ProviderDiscovery for ClaudeDiscovery {
+impl ProviderDiscovery for GeminiDiscovery {
     fn id(&self) -> &'static str {
-        "claude-code"
+        "gemini-cli"
     }
 
     fn display_name(&self) -> &'static str {
-        "Claude Code"
+        "Gemini CLI"
     }
 
     fn discover(&self) -> DiscoveryResult {
-        let claude_dir = Self::claude_dir();
-        let detected = claude_dir
+        let gemini_dir = Self::gemini_dir();
+        let detected = gemini_dir
             .as_ref()
             .is_some_and(|p| p.exists() && p.is_dir());
-        let detected_path = claude_dir.filter(|p| p.exists());
+        let detected_path = gemini_dir.filter(|p| p.exists());
 
         DiscoveryResult {
             id: self.id(),
@@ -48,29 +47,29 @@ impl ProviderDiscovery for ClaudeDiscovery {
             detected,
             detected_path,
             detection_hint: Some(
-                "Install Claude Code from https://claude.ai/download or run: npm install -g @anthropic-ai/claude-code".into(),
+                "Install Gemini CLI from https://github.com/google-gemini/gemini-cli".into(),
             ),
         }
     }
 
     fn supported_hooks(&self) -> &'static [&'static str] {
-        CLAUDE_HOOKS
+        GEMINI_HOOKS
     }
 }
 
-impl ProviderFactory for ClaudeDiscovery {
+impl ProviderFactory for GeminiDiscovery {
     fn create(&self, program_path: &Path) -> Result<Box<dyn LLmProviderTrait>> {
-        Ok(Box::new(Claude::new(program_path)?))
+        Ok(Box::new(Gemini::new(program_path)?))
     }
 }
 
-pub struct Claude {
+pub struct Gemini {
     command_line: String,
     settings: PathBuf,
 }
 
-impl Claude {
-    pub fn with_custom_path<P>(self_program: P) -> Result<Self>
+impl Gemini {
+    pub fn new<P>(self_program: P) -> Result<Self>
     where
         P: AsRef<Path>,
     {
@@ -78,22 +77,15 @@ impl Claude {
             anyhow!("Unable to determine home directory. Ensure HOME environment variable is set")
         })?;
 
-        let claude_dir = config_dir.join(".claude");
-        let settings = claude_dir.join("settings.json");
+        let gemini_dir = config_dir.join(".gemini");
+        let settings = gemini_dir.join("settings.json");
 
-        let command_line = format!("{} claude-callback", self_program.as_ref().display());
+        let command_line = format!("{} gemini-callback", self_program.as_ref().display());
 
         Ok(Self {
             command_line,
             settings,
         })
-    }
-
-    pub fn new<P>(program: P) -> Result<Self>
-    where
-        P: AsRef<Path>,
-    {
-        Claude::with_custom_path(program)
     }
 
     /// Ensure the settings file exists, creating it with an empty JSON object if needed.
@@ -102,7 +94,7 @@ impl Claude {
             if !parent.exists() {
                 fs::create_dir_all(parent).with_context(|| {
                     format!(
-                        "Unable to create Claude config directory at {}",
+                        "Unable to create Gemini config directory at {}",
                         parent.display()
                     )
                 })?;
@@ -112,7 +104,7 @@ impl Claude {
         if !self.settings.exists() {
             fs::write(&self.settings, "{}\n").with_context(|| {
                 format!(
-                    "Unable to create Claude settings file at {}",
+                    "Unable to create Gemini settings file at {}",
                     self.settings.display()
                 )
             })?;
@@ -121,6 +113,7 @@ impl Claude {
         Ok(())
     }
 
+    /// Gemini CLI uses the same hook structure as Claude Code
     pub(crate) fn install_into(&self, hook_type: &str, json: &mut Value) -> Result<()> {
         let root = json.as_object_mut().ok_or_else(|| {
             anyhow!(
@@ -151,7 +144,7 @@ impl Claude {
                 )
             })?;
 
-        // Look for an existing entry with matcher "*"
+        // Gemini CLI uses the same nested matcher structure as Claude Code
         let wildcard_entry = hook_type_arr
             .iter_mut()
             .filter_map(|v| v.as_object_mut())
@@ -160,6 +153,7 @@ impl Claude {
         let our_hook = json!({
             "type": "command",
             "command": &self.command_line,
+            "name": "viberails"
         });
 
         if let Some(entry) = wildcard_entry {
@@ -180,7 +174,7 @@ impl Claude {
                 .any(|h| h.get("command").and_then(|c| c.as_str()) == Some(&self.command_line));
 
             if already_installed {
-                warn!("{hook_type} already exist in {}", self.settings.display());
+                warn!("{hook_type} already exists in {}", self.settings.display());
                 return Ok(());
             }
 
@@ -247,16 +241,14 @@ impl Claude {
     }
 }
 
-impl LLmProviderTrait for Claude {
+impl LLmProviderTrait for Gemini {
     fn name(&self) -> &'static str {
-        "claude-code"
+        "gemini-cli"
     }
 
-    // Install
-    fn install(&self, hook_type: &str) -> anyhow::Result<()> {
+    fn install(&self, hook_type: &str) -> Result<()> {
         info!("Installing {hook_type} in {}", self.settings.display());
 
-        // Ensure settings file exists (creates empty JSON if needed)
         self.ensure_settings_exist()?;
 
         let data = fs::read_to_string(&self.settings)
@@ -268,11 +260,8 @@ impl LLmProviderTrait for Claude {
         self.install_into(hook_type, &mut json)
             .with_context(|| format!("Unable to update {}", self.settings.display()))?;
 
-        //
-        // this should now be updated. Write it back to the file
-        //
         let json_str =
-            serde_json::to_string_pretty(&json).context("Failed to serialize Claude settings")?;
+            serde_json::to_string_pretty(&json).context("Failed to serialize Gemini settings")?;
 
         let mut fd = fs::OpenOptions::new()
             .write(true)
@@ -287,8 +276,8 @@ impl LLmProviderTrait for Claude {
         Ok(())
     }
 
-    fn uninstall(&self, hook_type: &str) -> anyhow::Result<()> {
-        info!("Uninstalling {hook_type} in {}", self.settings.display());
+    fn uninstall(&self, hook_type: &str) -> Result<()> {
+        info!("Uninstalling {hook_type} from {}", self.settings.display());
 
         let data = fs::read_to_string(&self.settings)
             .with_context(|| format!("Unable to read {}", self.settings.display()))?;
@@ -299,7 +288,7 @@ impl LLmProviderTrait for Claude {
         self.uninstall_from(hook_type, &mut json);
 
         let json_str =
-            serde_json::to_string_pretty(&json).context("Failed to serialize Claude settings")?;
+            serde_json::to_string_pretty(&json).context("Failed to serialize Gemini settings")?;
 
         let mut fd = fs::OpenOptions::new()
             .write(true)

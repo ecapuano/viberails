@@ -52,9 +52,30 @@ enum Command {
     #[command(visible_alias = "ls")]
     List,
 
-    /// Claude Callback
-    #[command(visible_alias = "cc")]
+    // Provider callback commands (internal - used by hooks)
+    /// Claude Code callback
+    #[command(visible_alias = "cc", hide = true)]
     ClaudeCallback,
+
+    /// Cursor callback
+    #[command(hide = true)]
+    CursorCallback,
+
+    /// Gemini CLI callback
+    #[command(hide = true)]
+    GeminiCallback,
+
+    /// `OpenAI` Codex callback
+    #[command(hide = true)]
+    CodexCallback,
+
+    /// `OpenCode` callback
+    #[command(hide = true)]
+    OpencodeCallback,
+
+    /// Clawdbot/OpenClaw callback
+    #[command(hide = true)]
+    ClawdbotCallback,
 }
 
 fn init_logging(verbose: bool) -> Result<()> {
@@ -72,12 +93,19 @@ fn main() -> Result<()> {
     init_logging(args.verbose)?;
 
     match args.command {
-        Command::Install => install(Providers::ClaudeCode),
+        Command::Install => install(),
         Command::Uninstall => uninstall(),
         Command::List => list(),
         Command::Configure(a) => configure(&a),
         Command::ShowConfiguration => show_configuration(),
         Command::Login(args) => login(&args),
+
+        // Provider callbacks
         Command::ClaudeCallback => hook(Providers::ClaudeCode),
+        Command::CursorCallback => hook(Providers::Cursor),
+        Command::GeminiCallback => hook(Providers::GeminiCli),
+        Command::CodexCallback => hook(Providers::Codex),
+        Command::OpencodeCallback => hook(Providers::OpenCode),
+        Command::ClawdbotCallback => hook(Providers::Clawdbot),
     }
 }

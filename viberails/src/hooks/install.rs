@@ -10,18 +10,16 @@ use log::{error, info, warn};
 use crate::{
     common::{display_authorize_help, print_header},
     config::{Config, uninstall_config},
-    providers::{Claude, LLmProviderTrait, Providers},
+    providers::{ProviderRegistry, select_providers},
 };
 
-const LABEL_WIDTH: usize = 12;
+const LABEL_WIDTH: usize = 20;
 
 struct InstallResult {
-    provider: Providers,
+    provider_name: String,
     hooktype: &'static str,
     result: Result<(), Error>,
 }
-
-const CLAUDE_HOOKS: &[&str] = &["PreToolUse", "UserPromptSubmit"];
 
 impl fmt::Display for InstallResult {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -29,14 +27,14 @@ impl fmt::Display for InstallResult {
             Ok(()) => write!(
                 f,
                 "{:<LABEL_WIDTH$} {:<20} {}",
-                self.provider,
+                self.provider_name,
                 self.hooktype,
                 "[SUCCESS]".green()
             ),
             Err(e) => write!(
                 f,
                 "{:<LABEL_WIDTH$} {:<20} {} {}",
-                self.provider,
+                self.provider_name,
                 self.hooktype,
                 "[FAILURE]".red(),
                 e
@@ -45,45 +43,74 @@ impl fmt::Display for InstallResult {
     }
 }
 
-fn install_hooks(program: &Path, provider: Providers) -> Vec<InstallResult> {
-    info!("Installing hooks");
-
+fn install_hooks_for_provider(
+    program: &Path,
+    registry: &ProviderRegistry,
+    provider_id: &str,
+) -> Vec<InstallResult> {
     let mut results = vec![];
 
-    if let Ok(claude) = Claude::new(program) {
-        for h in CLAUDE_HOOKS {
-            let ret = claude.install(h);
+    let Some(factory) = registry.get(provider_id) else {
+        results.push(InstallResult {
+            provider_name: provider_id.to_string(),
+            hooktype: "*",
+            result: Err(anyhow!("Unknown provider")),
+        });
+        return results;
+    };
 
-            let result = InstallResult {
-                provider,
-                hooktype: h,
-                result: ret,
-            };
-
-            results.push(result);
+    let provider = match factory.create(program) {
+        Ok(p) => p,
+        Err(e) => {
+            results.push(InstallResult {
+                provider_name: factory.display_name().to_string(),
+                hooktype: "*",
+                result: Err(e),
+            });
+            return results;
         }
+    };
+
+    for hook_type in factory.supported_hooks() {
+        let ret = provider.install(hook_type);
+
+        results.push(InstallResult {
+            provider_name: factory.display_name().to_string(),
+            hooktype: hook_type,
+            result: ret,
+        });
     }
 
     results
 }
 
-fn uninstall_hooks(program: &Path) -> Vec<InstallResult> {
-    info!("Uninstalling hooks");
-
+fn uninstall_hooks_for_provider(
+    program: &Path,
+    registry: &ProviderRegistry,
+    provider_id: &str,
+) -> Vec<InstallResult> {
     let mut results = vec![];
 
-    if let Ok(claude) = Claude::new(program) {
-        for h in CLAUDE_HOOKS {
-            let ret = claude.uninstall(h);
+    let Some(factory) = registry.get(provider_id) else {
+        return results;
+    };
 
-            let result = InstallResult {
-                provider: Providers::ClaudeCode,
-                hooktype: h,
-                result: ret,
-            };
-
-            results.push(result);
+    let provider = match factory.create(program) {
+        Ok(p) => p,
+        Err(e) => {
+            warn!("Failed to create provider {provider_id}: {e}");
+            return results;
         }
+    };
+
+    for hook_type in factory.supported_hooks() {
+        let ret = provider.uninstall(hook_type);
+
+        results.push(InstallResult {
+            provider_name: factory.display_name().to_string(),
+            hooktype: hook_type,
+            result: ret,
+        });
     }
 
     results
@@ -154,10 +181,10 @@ fn binary_location() -> Result<PathBuf> {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// PIBLIC
+// PUBLIC
 ////////////////////////////////////////////////////////////////////////////////
 
-pub fn install(provider: Providers) -> Result<()> {
+pub fn install() -> Result<()> {
     //
     // Make sure we're autorized, otherwise it'll fail silently
     //
@@ -168,18 +195,42 @@ pub fn install(provider: Providers) -> Result<()> {
     }
 
     //
-    // We also have to install ourselves on the host. We'll do like claude-code
-    // and intall ourselves in ~/.local/bin/
+    // Create the registry and let the user select providers
     //
-    // It's doesn't matter if it's not in the path since the hook contains
+    let registry = ProviderRegistry::new();
+    let selection = select_providers(&registry)?;
+
+    let Some(selection) = selection else {
+        println!("Installation cancelled.");
+        return Ok(());
+    };
+
+    if selection.selected_ids.is_empty() {
+        println!("No providers selected.");
+        return Ok(());
+    }
+
+    //
+    // We also have to install ourselves on the host. We'll do like claude-code
+    // and install ourselves in ~/.local/bin/
+    //
+    // It doesn't matter if it's not in the path since the hook contains
     // an absolute path
     //
     let dst = binary_location()?;
     install_binary(&dst)?;
 
-    let results = install_hooks(&dst, provider);
+    //
+    // Install hooks for each selected provider
+    //
+    let mut all_results = Vec::new();
 
-    display_results(&results);
+    for provider_id in &selection.selected_ids {
+        let results = install_hooks_for_provider(&dst, &registry, provider_id);
+        all_results.extend(results);
+    }
+
+    display_results(&all_results);
 
     Ok(())
 }
@@ -188,9 +239,18 @@ pub fn uninstall() -> Result<()> {
     let mut success = true;
     let dst = binary_location()?;
 
-    let results = uninstall_hooks(&dst);
+    //
+    // Uninstall hooks for all known providers
+    //
+    let registry = ProviderRegistry::new();
+    let mut all_results = Vec::new();
 
-    display_results(&results);
+    for factory in registry.all() {
+        let results = uninstall_hooks_for_provider(&dst, &registry, factory.id());
+        all_results.extend(results);
+    }
+
+    display_results(&all_results);
 
     if let Err(e) = uninstall_binary(&dst) {
         error!("Unable to delete binary ({e}");
