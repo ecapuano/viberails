@@ -5,7 +5,7 @@ use serde_json::json;
 use crate::providers::cursor::Cursor;
 
 fn make_cursor(program: &str) -> Cursor {
-    Cursor::new(program).unwrap()
+    Cursor::with_custom_path(program).unwrap()
 }
 
 #[test]

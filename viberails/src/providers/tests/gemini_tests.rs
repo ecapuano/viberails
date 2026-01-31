@@ -5,7 +5,7 @@ use serde_json::json;
 use crate::providers::gemini::Gemini;
 
 fn make_gemini(program: &str) -> Gemini {
-    Gemini::new(program).unwrap()
+    Gemini::with_custom_path(program).unwrap()
 }
 
 #[test]

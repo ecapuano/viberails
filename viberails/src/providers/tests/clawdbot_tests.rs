@@ -5,7 +5,7 @@ use serde_json::json;
 use crate::providers::clawdbot::Clawdbot;
 
 fn make_clawdbot(program: &str) -> Clawdbot {
-    Clawdbot::new(program).unwrap()
+    Clawdbot::with_custom_path(program).unwrap()
 }
 
 #[test]

@@ -44,7 +44,6 @@ impl fmt::Display for InstallResult {
 }
 
 fn install_hooks_for_provider(
-    program: &Path,
     registry: &ProviderRegistry,
     provider_id: &str,
 ) -> Vec<InstallResult> {
@@ -59,7 +58,7 @@ fn install_hooks_for_provider(
         return results;
     };
 
-    let provider = match factory.create(program) {
+    let provider = match factory.create() {
         Ok(p) => p,
         Err(e) => {
             results.push(InstallResult {
@@ -85,7 +84,6 @@ fn install_hooks_for_provider(
 }
 
 fn uninstall_hooks_for_provider(
-    program: &Path,
     registry: &ProviderRegistry,
     provider_id: &str,
 ) -> Vec<InstallResult> {
@@ -95,7 +93,7 @@ fn uninstall_hooks_for_provider(
         return results;
     };
 
-    let provider = match factory.create(program) {
+    let provider = match factory.create() {
         Ok(p) => p,
         Err(e) => {
             warn!("Failed to create provider {provider_id}: {e}");
@@ -226,7 +224,7 @@ pub fn install() -> Result<()> {
     let mut all_results = Vec::new();
 
     for provider_id in &selection.selected_ids {
-        let results = install_hooks_for_provider(&dst, &registry, provider_id);
+        let results = install_hooks_for_provider(&registry, provider_id);
         all_results.extend(results);
     }
 
@@ -261,7 +259,7 @@ pub fn uninstall() -> Result<()> {
     let mut all_results = Vec::new();
 
     for provider_id in &selection.selected_ids {
-        let results = uninstall_hooks_for_provider(&dst, &registry, provider_id);
+        let results = uninstall_hooks_for_provider(&registry, provider_id);
         all_results.extend(results);
     }
 
@@ -270,7 +268,11 @@ pub fn uninstall() -> Result<()> {
     //
     // Only delete binary and config if ALL detected providers were uninstalled
     //
-    let detected_count = registry.discover_all().iter().filter(|d| d.detected).count();
+    let detected_count = registry
+        .discover_all()
+        .iter()
+        .filter(|d| d.detected)
+        .count();
     let all_uninstalled = selection.selected_ids.len() >= detected_count;
 
     if all_uninstalled {
@@ -284,7 +286,9 @@ pub fn uninstall() -> Result<()> {
             success = false;
         }
     } else {
-        println!("\nHooks removed from selected tools. Binary and config retained for remaining tools.");
+        println!(
+            "\nHooks removed from selected tools. Binary and config retained for remaining tools."
+        );
     }
 
     if success {

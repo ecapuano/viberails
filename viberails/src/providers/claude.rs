@@ -59,8 +59,8 @@ impl ProviderDiscovery for ClaudeDiscovery {
 }
 
 impl ProviderFactory for ClaudeDiscovery {
-    fn create(&self, program_path: &Path) -> Result<Box<dyn LLmProviderTrait>> {
-        Ok(Box::new(Claude::new(program_path)?))
+    fn create(&self) -> Result<Box<dyn LLmProviderTrait>> {
+        Ok(Box::new(Claude::new()?))
     }
 }
 
@@ -89,11 +89,9 @@ impl Claude {
         })
     }
 
-    pub fn new<P>(program: P) -> Result<Self>
-    where
-        P: AsRef<Path>,
-    {
-        Claude::with_custom_path(program)
+    pub fn new() -> Result<Self> {
+        let exe = std::env::current_exe().context("Unable to determine current executable path")?;
+        Claude::with_custom_path(exe)
     }
 
     /// Ensure the settings file exists, creating it with an empty JSON object if needed.

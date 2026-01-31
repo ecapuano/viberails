@@ -1,8 +1,4 @@
-use std::{
-    fs,
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::{fs, io::Write, path::PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use log::{info, warn};
@@ -60,8 +56,8 @@ impl ProviderDiscovery for CodexDiscovery {
 }
 
 impl ProviderFactory for CodexDiscovery {
-    fn create(&self, program_path: &Path) -> Result<Box<dyn LLmProviderTrait>> {
-        Ok(Box::new(Codex::new(program_path)?))
+    fn create(&self) -> Result<Box<dyn LLmProviderTrait>> {
+        Ok(Box::new(Codex::new()?))
     }
 }
 
@@ -71,15 +67,17 @@ pub struct Codex {
 }
 
 impl Codex {
-    pub fn new<P>(self_program: P) -> Result<Self>
-    where
-        P: AsRef<Path>,
-    {
+    pub fn new() -> Result<Self> {
+        let exe = std::env::current_exe().context("Unable to determine current executable path")?;
+        Self::with_custom_path(exe)
+    }
+
+    pub fn with_custom_path<P: AsRef<std::path::Path>>(program: P) -> Result<Self> {
         let codex_dir = CodexDiscovery::codex_dir()
             .ok_or_else(|| anyhow!("Unable to determine Codex config directory"))?;
 
         let config_file = codex_dir.join("config.toml");
-        let command_line = format!("{} codex-callback", self_program.as_ref().display());
+        let command_line = format!("{} codex-callback", program.as_ref().display());
 
         Ok(Self {
             command_line,

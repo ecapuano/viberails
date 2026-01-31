@@ -39,7 +39,7 @@ pub trait ProviderDiscovery: Send + Sync {
 
 /// Trait for creating provider instances after discovery confirms availability.
 pub trait ProviderFactory: ProviderDiscovery {
-    /// Create a new provider instance using the given program path.
-    /// The program path is the path to the viberails binary that will be used in hook commands.
-    fn create(&self, program_path: &std::path::Path) -> Result<Box<dyn LLmProviderTrait>>;
+    /// Create a new provider instance.
+    /// The provider will use `std::env::current_exe()` to determine the program path for hook commands.
+    fn create(&self) -> Result<Box<dyn LLmProviderTrait>>;
 }

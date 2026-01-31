@@ -5,7 +5,7 @@ use toml::Table;
 use crate::providers::codex::Codex;
 
 fn make_codex(program: &str) -> Codex {
-    Codex::new(program).unwrap()
+    Codex::with_custom_path(program).unwrap()
 }
 
 fn parse_toml(s: &str) -> Table {

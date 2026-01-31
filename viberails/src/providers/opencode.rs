@@ -1,8 +1,4 @@
-use std::{
-    fs,
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::{fs, io::Write, path::PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use log::{info, warn};
@@ -61,8 +57,8 @@ impl ProviderDiscovery for OpenCodeDiscovery {
 }
 
 impl ProviderFactory for OpenCodeDiscovery {
-    fn create(&self, program_path: &Path) -> Result<Box<dyn LLmProviderTrait>> {
-        Ok(Box::new(OpenCode::new(program_path)?))
+    fn create(&self) -> Result<Box<dyn LLmProviderTrait>> {
+        Ok(Box::new(OpenCode::new()?))
     }
 }
 
@@ -72,15 +68,17 @@ pub struct OpenCode {
 }
 
 impl OpenCode {
-    pub fn new<P>(self_program: P) -> Result<Self>
-    where
-        P: AsRef<Path>,
-    {
+    pub fn new() -> Result<Self> {
+        let exe = std::env::current_exe().context("Unable to determine current executable path")?;
+        Self::with_custom_path(exe)
+    }
+
+    pub fn with_custom_path<P: AsRef<std::path::Path>>(program: P) -> Result<Self> {
         let opencode_dir = OpenCodeDiscovery::opencode_dir()
             .ok_or_else(|| anyhow!("Unable to determine OpenCode config directory"))?;
 
         let config_file = opencode_dir.join("opencode.json");
-        let command_line = format!("{} opencode-callback", self_program.as_ref().display());
+        let command_line = format!("{} opencode-callback", program.as_ref().display());
 
         Ok(Self {
             command_line,

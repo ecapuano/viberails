@@ -92,7 +92,7 @@ fn test_registry_provider_can_create_instance() {
     let registry = ProviderRegistry::new();
 
     let factory = registry.get("claude-code").unwrap();
-    let result = factory.create(std::path::Path::new("/test/program"));
+    let result = factory.create();
 
     // Should be able to create a provider instance
     assert!(result.is_ok());

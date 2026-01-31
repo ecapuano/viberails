@@ -1,8 +1,4 @@
-use std::{
-    fs,
-    io::Write,
-    path::{Path, PathBuf},
-};
+use std::{fs, io::Write, path::PathBuf};
 
 use anyhow::{Context, Result, anyhow};
 use log::{info, warn};
@@ -80,8 +76,8 @@ impl ProviderDiscovery for ClawdbotDiscovery {
 }
 
 impl ProviderFactory for ClawdbotDiscovery {
-    fn create(&self, program_path: &Path) -> Result<Box<dyn LLmProviderTrait>> {
-        Ok(Box::new(Clawdbot::new(program_path)?))
+    fn create(&self) -> Result<Box<dyn LLmProviderTrait>> {
+        Ok(Box::new(Clawdbot::new()?))
     }
 }
 
@@ -91,15 +87,17 @@ pub struct Clawdbot {
 }
 
 impl Clawdbot {
-    pub fn new<P>(self_program: P) -> Result<Self>
-    where
-        P: AsRef<Path>,
-    {
+    pub fn new() -> Result<Self> {
+        let exe = std::env::current_exe().context("Unable to determine current executable path")?;
+        Self::with_custom_path(exe)
+    }
+
+    pub fn with_custom_path<P: AsRef<std::path::Path>>(program: P) -> Result<Self> {
         let (clawdbot_dir, config_name) = ClawdbotDiscovery::clawdbot_paths()
             .ok_or_else(|| anyhow!("Unable to determine Clawdbot config directory"))?;
 
         let config_file = clawdbot_dir.join(config_name);
-        let command_line = format!("{} clawdbot-callback", self_program.as_ref().display());
+        let command_line = format!("{} clawdbot-callback", program.as_ref().display());
 
         Ok(Self {
             command_line,

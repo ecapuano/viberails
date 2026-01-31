@@ -1,18 +1,11 @@
-use std::env;
+use anyhow::Result;
 
-use anyhow::{Context, Result};
-
-use crate::{
-    common::print_header,
-    providers::ProviderRegistry,
-};
+use crate::{common::print_header, providers::ProviderRegistry};
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
 pub fn list() -> Result<()> {
-    let current_exe = env::current_exe().context("Unable to find current exe")?;
-
     let registry = ProviderRegistry::new();
 
     print_header();
@@ -30,26 +23,24 @@ pub fn list() -> Result<()> {
             continue;
         }
 
-        match factory.create(&current_exe) {
-            Ok(provider) => {
-                match provider.list() {
-                    Ok(hooks) => {
-                        if hooks.is_empty() {
-                            println!("    [no hooks installed]");
-                        } else {
-                            for hook in hooks {
-                                println!(
-                                    "    {:<20} {:<10} {}",
-                                    hook.hook_type, hook.matcher, hook.command
-                                );
-                            }
+        match factory.create() {
+            Ok(provider) => match provider.list() {
+                Ok(hooks) => {
+                    if hooks.is_empty() {
+                        println!("    [no hooks installed]");
+                    } else {
+                        for hook in hooks {
+                            println!(
+                                "    {:<20} {:<10} {}",
+                                hook.hook_type, hook.matcher, hook.command
+                            );
                         }
                     }
-                    Err(e) => {
-                        println!("    [error listing hooks: {e}]");
-                    }
                 }
-            }
+                Err(e) => {
+                    println!("    [error listing hooks: {e}]");
+                }
+            },
             Err(e) => {
                 println!("    [error creating provider: {e}]");
             }

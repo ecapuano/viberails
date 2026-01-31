@@ -1,7 +1,5 @@
 #![allow(clippy::unwrap_used)]
 
-use std::path::Path;
-
 use crate::providers::discovery::{DiscoveryResult, ProviderDiscovery, ProviderFactory};
 use crate::providers::{HookEntry, LLmProviderTrait};
 
@@ -56,7 +54,7 @@ impl ProviderDiscovery for AlwaysDetectedDiscovery {
 }
 
 impl ProviderFactory for AlwaysDetectedDiscovery {
-    fn create(&self, _program_path: &Path) -> anyhow::Result<Box<dyn LLmProviderTrait>> {
+    fn create(&self) -> anyhow::Result<Box<dyn LLmProviderTrait>> {
         Ok(Box::new(MockProvider {
             name: "always-detected",
         }))
@@ -91,7 +89,7 @@ impl ProviderDiscovery for NeverDetectedDiscovery {
 }
 
 impl ProviderFactory for NeverDetectedDiscovery {
-    fn create(&self, _program_path: &Path) -> anyhow::Result<Box<dyn LLmProviderTrait>> {
+    fn create(&self) -> anyhow::Result<Box<dyn LLmProviderTrait>> {
         anyhow::bail!("Not detected, cannot create")
     }
 }
@@ -151,7 +149,7 @@ fn test_provider_discovery_supported_hooks() {
 #[test]
 fn test_provider_factory_create_success() {
     let discovery = AlwaysDetectedDiscovery;
-    let provider = discovery.create(Path::new("/test/program"));
+    let provider = discovery.create();
 
     assert!(provider.is_ok());
     let provider = provider.unwrap();
@@ -161,7 +159,7 @@ fn test_provider_factory_create_success() {
 #[test]
 fn test_provider_factory_create_failure() {
     let discovery = NeverDetectedDiscovery;
-    let provider = discovery.create(Path::new("/test/program"));
+    let provider = discovery.create();
 
     assert!(provider.is_err());
 }
@@ -216,7 +214,7 @@ fn test_claude_discovery_create_provider() {
     use crate::providers::claude::ClaudeDiscovery;
 
     let discovery = ClaudeDiscovery;
-    let result = discovery.create(Path::new("/test/viberails"));
+    let result = discovery.create();
 
     // Should succeed (just creates the struct, doesn't require file to exist)
     assert!(result.is_ok());

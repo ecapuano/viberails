@@ -5,7 +5,7 @@ use serde_json::json;
 use crate::providers::opencode::OpenCode;
 
 fn make_opencode(program: &str) -> OpenCode {
-    OpenCode::new(program).unwrap()
+    OpenCode::with_custom_path(program).unwrap()
 }
 
 #[test]
