@@ -92,8 +92,27 @@ impl Claude {
     }
 
     pub fn new() -> Result<Self> {
-        let exe = std::env::current_exe().context("Unable to determine current executable path")?;
+        // Always use the installed binary location (~/.local/bin/viberails) rather than
+        // current_exe(), so the hook command is consistent regardless of where viberails
+        // is run from. This prevents duplicate hooks when running from different locations.
+        let exe = Self::binary_location()?;
         Claude::with_custom_path(exe)
+    }
+
+    /// Get the installed binary location (~/.local/bin/viberails).
+    fn binary_location() -> Result<PathBuf> {
+        let home = dirs::home_dir().ok_or_else(|| {
+            anyhow!("Unable to determine home directory. Ensure HOME environment variable is set")
+        })?;
+
+        let local_bin = home.join(".local").join("bin");
+        let file_name = if cfg!(target_os = "windows") {
+            format!("{}.exe", crate::common::PROJECT_NAME)
+        } else {
+            crate::common::PROJECT_NAME.to_string()
+        };
+
+        Ok(local_bin.join(file_name))
     }
 
     /// Ensure the settings file exists, creating it with an empty JSON object if needed.
