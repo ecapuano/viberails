@@ -12,4 +12,8 @@ echo "Installing git hooks..."
 cp "$SCRIPT_DIR/pre-commit" "$HOOKS_DIR/pre-commit"
 chmod +x "$HOOKS_DIR/pre-commit"
 
+# Copy pre-push hook
+cp "$SCRIPT_DIR/pre-push" "$HOOKS_DIR/pre-push"
+chmod +x "$HOOKS_DIR/pre-push"
+
 echo "Git hooks installed successfully!"
