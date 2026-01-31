@@ -17,8 +17,16 @@ const CONFIG_FILE_NAME: &str = "config.json";
 #[derive(clap::Args)]
 pub struct ConfigureArgs {
     /// Accept command on cloud failure
-    #[arg(long, default_value_t = true)]
-    fail_open: bool,
+    #[arg(long)]
+    fail_open: Option<bool>,
+
+    /// Send tool use events to cloud for authorization
+    #[arg(long)]
+    audit_tool_use: Option<bool>,
+
+    /// Send prompt/chat events to cloud for audit logging
+    #[arg(long)]
+    audit_prompts: Option<bool>,
 }
 
 #[derive(clap::Args)]
@@ -30,6 +38,18 @@ pub struct JoinTeamArgs {
 #[derive(Serialize, Deserialize, Builder)]
 pub struct UserConfig {
     pub fail_open: bool,
+    /// Send tool use events to cloud for authorization (default: true)
+    #[serde(default = "default_true")]
+    #[builder(default = true)]
+    pub audit_tool_use: bool,
+    /// Send prompt/chat events to cloud for audit logging (default: true)
+    #[serde(default = "default_true")]
+    #[builder(default = true)]
+    pub audit_prompts: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -47,7 +67,11 @@ impl LcOrg {
 
 impl Default for UserConfig {
     fn default() -> Self {
-        Self { fail_open: true }
+        Self {
+            fail_open: true,
+            audit_tool_use: true,
+            audit_prompts: true,
+        }
     }
 }
 
@@ -61,6 +85,8 @@ pub struct Config {
 #[derive(Tabled)]
 struct ConfigDisplay<'a> {
     fail_open: bool,
+    audit_tool_use: bool,
+    audit_prompts: bool,
     install_id: &'a str,
     org_name: &'a str,
     org_url: &'a str,
@@ -70,6 +96,8 @@ impl<'a> From<&'a Config> for ConfigDisplay<'a> {
     fn from(config: &'a Config) -> Self {
         Self {
             fail_open: config.user.fail_open,
+            audit_tool_use: config.user.audit_tool_use,
+            audit_prompts: config.user.audit_prompts,
             install_id: &config.install_id,
             org_name: &config.org.name,
             org_url: &config.org.url,
@@ -187,13 +215,18 @@ pub fn show_configuration() -> Result<()> {
 }
 
 pub fn configure(args: &ConfigureArgs) -> Result<()> {
-    let user = UserConfig {
-        fail_open: args.fail_open,
-    };
-
     let mut config = Config::load()?;
 
-    config.user = user;
+    // Update only the fields that were explicitly provided
+    if let Some(fail_open) = args.fail_open {
+        config.user.fail_open = fail_open;
+    }
+    if let Some(audit_tool_use) = args.audit_tool_use {
+        config.user.audit_tool_use = audit_tool_use;
+    }
+    if let Some(audit_prompts) = args.audit_prompts {
+        config.user.audit_prompts = audit_prompts;
+    }
 
     config.save()?;
 

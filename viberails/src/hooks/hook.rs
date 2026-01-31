@@ -153,18 +153,27 @@ impl<'a> Hook<'a> {
 
         if is_tool_use(&value) {
             //
-            // D&R Path
+            // D&R Path - only call cloud if audit_tool_use is enabled
             //
-            let decision = self.authorize_tool(value);
+            let decision = if self.config.user.audit_tool_use {
+                self.authorize_tool(value)
+            } else {
+                info!("audit_tool_use disabled, approving locally");
+                HookDecision::Approve
+            };
 
-            info!("Desision={decision}");
+            info!("Decision={decision}");
             self.write_decision(decision)?;
         } else {
             //
-            // This is best effort
+            // Notify path - only call cloud if audit_prompts is enabled
             //
-            if let Err(e) = self.cloud.notify(value) {
-                error!("Unable to notify cloud ({e})");
+            if self.config.user.audit_prompts {
+                if let Err(e) = self.cloud.notify(value) {
+                    error!("Unable to notify cloud ({e})");
+                }
+            } else {
+                info!("audit_prompts disabled, skipping cloud notification");
             }
         }
 
