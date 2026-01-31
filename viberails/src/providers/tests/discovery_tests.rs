@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use super::discovery::{DiscoveryResult, ProviderDiscovery, ProviderFactory};
-use super::{HookEntry, LLmProviderTrait};
+use crate::providers::discovery::{DiscoveryResult, ProviderDiscovery, ProviderFactory};
+use crate::providers::{HookEntry, LLmProviderTrait};
 
 /// Mock provider for testing discovery system
 struct MockProvider {
@@ -169,7 +169,7 @@ fn test_provider_factory_create_failure() {
 // Tests for ClaudeDiscovery (the real implementation)
 #[test]
 fn test_claude_discovery_id() {
-    use super::claude::ClaudeDiscovery;
+    use crate::providers::claude::ClaudeDiscovery;
 
     let discovery = ClaudeDiscovery;
     assert_eq!(discovery.id(), "claude-code");
@@ -177,7 +177,7 @@ fn test_claude_discovery_id() {
 
 #[test]
 fn test_claude_discovery_display_name() {
-    use super::claude::ClaudeDiscovery;
+    use crate::providers::claude::ClaudeDiscovery;
 
     let discovery = ClaudeDiscovery;
     assert_eq!(discovery.display_name(), "Claude Code");
@@ -185,7 +185,7 @@ fn test_claude_discovery_display_name() {
 
 #[test]
 fn test_claude_discovery_supported_hooks() {
-    use super::claude::ClaudeDiscovery;
+    use crate::providers::claude::ClaudeDiscovery;
 
     let discovery = ClaudeDiscovery;
     let hooks = discovery.supported_hooks();
@@ -196,7 +196,7 @@ fn test_claude_discovery_supported_hooks() {
 
 #[test]
 fn test_claude_discovery_returns_valid_result() {
-    use super::claude::ClaudeDiscovery;
+    use crate::providers::claude::ClaudeDiscovery;
 
     let discovery = ClaudeDiscovery;
     let result = discovery.discover();
@@ -213,7 +213,7 @@ fn test_claude_discovery_returns_valid_result() {
 
 #[test]
 fn test_claude_discovery_create_provider() {
-    use super::claude::ClaudeDiscovery;
+    use crate::providers::claude::ClaudeDiscovery;
 
     let discovery = ClaudeDiscovery;
     let result = discovery.create(Path::new("/test/viberails"));

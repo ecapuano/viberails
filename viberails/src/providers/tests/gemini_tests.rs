@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use super::gemini::Gemini;
+use crate::providers::gemini::Gemini;
 
 fn make_gemini(program: &str) -> Gemini {
     Gemini::new(program).unwrap()
@@ -216,8 +216,8 @@ fn test_uninstall_from_no_wildcard_matcher() {
 // Discovery tests
 #[test]
 fn test_gemini_discovery_id() {
-    use super::gemini::GeminiDiscovery;
     use crate::providers::ProviderDiscovery;
+    use crate::providers::gemini::GeminiDiscovery;
 
     let discovery = GeminiDiscovery;
     assert_eq!(discovery.id(), "gemini-cli");
@@ -225,8 +225,8 @@ fn test_gemini_discovery_id() {
 
 #[test]
 fn test_gemini_discovery_display_name() {
-    use super::gemini::GeminiDiscovery;
     use crate::providers::ProviderDiscovery;
+    use crate::providers::gemini::GeminiDiscovery;
 
     let discovery = GeminiDiscovery;
     assert_eq!(discovery.display_name(), "Gemini CLI");
@@ -234,8 +234,8 @@ fn test_gemini_discovery_display_name() {
 
 #[test]
 fn test_gemini_discovery_supported_hooks() {
-    use super::gemini::GeminiDiscovery;
     use crate::providers::ProviderDiscovery;
+    use crate::providers::gemini::GeminiDiscovery;
 
     let discovery = GeminiDiscovery;
     let hooks = discovery.supported_hooks();

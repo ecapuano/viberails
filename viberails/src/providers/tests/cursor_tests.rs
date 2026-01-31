@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use super::cursor::Cursor;
+use crate::providers::cursor::Cursor;
 
 fn make_cursor(program: &str) -> Cursor {
     Cursor::new(program).unwrap()
@@ -69,10 +69,7 @@ fn test_install_into_preserves_existing_hooks() {
     let hooks = json["hooks"]["preToolUse"].as_array().unwrap();
     assert_eq!(hooks.len(), 2);
     // Our hook should be first
-    assert_eq!(
-        hooks[0]["command"],
-        "/usr/bin/test-program cursor-callback"
-    );
+    assert_eq!(hooks[0]["command"], "/usr/bin/test-program cursor-callback");
     assert_eq!(hooks[1]["command"], "/other/program");
 }
 
@@ -104,7 +101,9 @@ fn test_install_into_different_hook_types() {
     let mut json = json!({"version": 1, "hooks": {}});
 
     cursor.install_into("preToolUse", &mut json).unwrap();
-    cursor.install_into("beforeSubmitPrompt", &mut json).unwrap();
+    cursor
+        .install_into("beforeSubmitPrompt", &mut json)
+        .unwrap();
 
     assert!(json["hooks"]["preToolUse"].is_array());
     assert!(json["hooks"]["beforeSubmitPrompt"].is_array());
@@ -181,8 +180,8 @@ fn test_uninstall_from_no_hook_type() {
 // Discovery tests
 #[test]
 fn test_cursor_discovery_id() {
-    use super::cursor::CursorDiscovery;
     use crate::providers::ProviderDiscovery;
+    use crate::providers::cursor::CursorDiscovery;
 
     let discovery = CursorDiscovery;
     assert_eq!(discovery.id(), "cursor");
@@ -190,8 +189,8 @@ fn test_cursor_discovery_id() {
 
 #[test]
 fn test_cursor_discovery_display_name() {
-    use super::cursor::CursorDiscovery;
     use crate::providers::ProviderDiscovery;
+    use crate::providers::cursor::CursorDiscovery;
 
     let discovery = CursorDiscovery;
     assert_eq!(discovery.display_name(), "Cursor");
@@ -199,8 +198,8 @@ fn test_cursor_discovery_display_name() {
 
 #[test]
 fn test_cursor_discovery_supported_hooks() {
-    use super::cursor::CursorDiscovery;
     use crate::providers::ProviderDiscovery;
+    use crate::providers::cursor::CursorDiscovery;
 
     let discovery = CursorDiscovery;
     let hooks = discovery.supported_hooks();

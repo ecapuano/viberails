@@ -2,7 +2,7 @@
 
 use toml::Table;
 
-use super::codex::Codex;
+use crate::providers::codex::Codex;
 
 fn make_codex(program: &str) -> Codex {
     Codex::new(program).unwrap()
@@ -30,10 +30,12 @@ fn test_install_into_empty_toml() {
 #[test]
 fn test_install_into_existing_config() {
     let codex = make_codex("/usr/bin/test-program");
-    let mut toml = parse_toml(r#"
+    let mut toml = parse_toml(
+        r#"
 model = "gpt-4"
 temperature = 0.7
-"#);
+"#,
+    );
 
     codex.install_into("notify", &mut toml).unwrap();
 
@@ -49,9 +51,11 @@ temperature = 0.7
 #[test]
 fn test_install_into_skips_if_already_installed() {
     let codex = make_codex("/usr/bin/test-program");
-    let mut toml = parse_toml(r#"
+    let mut toml = parse_toml(
+        r#"
 notify = ["/usr/bin/test-program codex-callback"]
-"#);
+"#,
+    );
 
     codex.install_into("notify", &mut toml).unwrap();
 
@@ -62,9 +66,11 @@ notify = ["/usr/bin/test-program codex-callback"]
 #[test]
 fn test_install_into_replaces_different_notify() {
     let codex = make_codex("/usr/bin/test-program");
-    let mut toml = parse_toml(r#"
+    let mut toml = parse_toml(
+        r#"
 notify = ["/other/program", "arg1"]
-"#);
+"#,
+    );
 
     codex.install_into("notify", &mut toml).unwrap();
 
@@ -79,10 +85,12 @@ notify = ["/other/program", "arg1"]
 #[test]
 fn test_uninstall_from_removes_our_notify() {
     let codex = make_codex("/usr/bin/test-program");
-    let mut toml = parse_toml(r#"
+    let mut toml = parse_toml(
+        r#"
 notify = ["/usr/bin/test-program codex-callback"]
 model = "gpt-4"
-"#);
+"#,
+    );
 
     codex.uninstall_from("notify", &mut toml);
 
@@ -94,9 +102,11 @@ model = "gpt-4"
 #[test]
 fn test_uninstall_from_preserves_different_notify() {
     let codex = make_codex("/usr/bin/test-program");
-    let mut toml = parse_toml(r#"
+    let mut toml = parse_toml(
+        r#"
 notify = ["/other/program"]
-"#);
+"#,
+    );
 
     codex.uninstall_from("notify", &mut toml);
 
@@ -108,9 +118,11 @@ notify = ["/other/program"]
 #[test]
 fn test_uninstall_from_no_notify() {
     let codex = make_codex("/usr/bin/test-program");
-    let mut toml = parse_toml(r#"
+    let mut toml = parse_toml(
+        r#"
 model = "gpt-4"
-"#);
+"#,
+    );
 
     // Should not panic
     codex.uninstall_from("notify", &mut toml);
@@ -128,8 +140,8 @@ fn test_uninstall_from_empty_toml() {
 // Discovery tests
 #[test]
 fn test_codex_discovery_id() {
-    use super::codex::CodexDiscovery;
     use crate::providers::ProviderDiscovery;
+    use crate::providers::codex::CodexDiscovery;
 
     let discovery = CodexDiscovery;
     assert_eq!(discovery.id(), "codex");
@@ -137,8 +149,8 @@ fn test_codex_discovery_id() {
 
 #[test]
 fn test_codex_discovery_display_name() {
-    use super::codex::CodexDiscovery;
     use crate::providers::ProviderDiscovery;
+    use crate::providers::codex::CodexDiscovery;
 
     let discovery = CodexDiscovery;
     assert_eq!(discovery.display_name(), "OpenAI Codex CLI");
@@ -146,8 +158,8 @@ fn test_codex_discovery_display_name() {
 
 #[test]
 fn test_codex_discovery_supported_hooks() {
-    use super::codex::CodexDiscovery;
     use crate::providers::ProviderDiscovery;
+    use crate::providers::codex::CodexDiscovery;
 
     let discovery = CodexDiscovery;
     let hooks = discovery.supported_hooks();

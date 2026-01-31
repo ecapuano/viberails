@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use super::opencode::OpenCode;
+use crate::providers::opencode::OpenCode;
 
 fn make_opencode(program: &str) -> OpenCode {
     OpenCode::new(program).unwrap()
@@ -41,7 +41,11 @@ fn test_install_into_existing_plugins() {
     opencode.install_into("plugins", &mut json).unwrap();
 
     // Other plugin should be preserved
-    assert!(json["plugins"]["other-plugin"]["enabled"].as_bool().unwrap());
+    assert!(
+        json["plugins"]["other-plugin"]["enabled"]
+            .as_bool()
+            .unwrap()
+    );
     // Our plugin should be added
     assert!(json["plugins"]["viberails"]["enabled"].as_bool().unwrap());
 }
@@ -147,14 +151,18 @@ fn test_uninstall_from_no_viberails() {
     opencode.uninstall_from("plugins", &mut json);
 
     // Other plugin should be unchanged
-    assert!(json["plugins"]["other-plugin"]["enabled"].as_bool().unwrap());
+    assert!(
+        json["plugins"]["other-plugin"]["enabled"]
+            .as_bool()
+            .unwrap()
+    );
 }
 
 // Discovery tests
 #[test]
 fn test_opencode_discovery_id() {
-    use super::opencode::OpenCodeDiscovery;
     use crate::providers::ProviderDiscovery;
+    use crate::providers::opencode::OpenCodeDiscovery;
 
     let discovery = OpenCodeDiscovery;
     assert_eq!(discovery.id(), "opencode");
@@ -162,8 +170,8 @@ fn test_opencode_discovery_id() {
 
 #[test]
 fn test_opencode_discovery_display_name() {
-    use super::opencode::OpenCodeDiscovery;
     use crate::providers::ProviderDiscovery;
+    use crate::providers::opencode::OpenCodeDiscovery;
 
     let discovery = OpenCodeDiscovery;
     assert_eq!(discovery.display_name(), "OpenCode");
@@ -171,8 +179,8 @@ fn test_opencode_discovery_display_name() {
 
 #[test]
 fn test_opencode_discovery_supported_hooks() {
-    use super::opencode::OpenCodeDiscovery;
     use crate::providers::ProviderDiscovery;
+    use crate::providers::opencode::OpenCodeDiscovery;
 
     let discovery = OpenCodeDiscovery;
     let hooks = discovery.supported_hooks();

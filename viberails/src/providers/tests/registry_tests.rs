@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used)]
 
-use super::registry::ProviderRegistry;
+use crate::providers::registry::ProviderRegistry;
 
 #[test]
 fn test_registry_new_creates_default_registry() {

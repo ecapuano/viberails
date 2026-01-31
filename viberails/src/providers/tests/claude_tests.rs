@@ -1,6 +1,6 @@
 use serde_json::json;
 
-use super::claude::Claude;
+use crate::providers::claude::Claude;
 
 #[test]
 fn test_install_into_empty_json() {

@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::useless_vec)]
 
-use super::discovery::DiscoveryResult;
+use crate::providers::discovery::DiscoveryResult;
 
 // Helper function to create a mock detected discovery result
 fn make_detected_result(id: &'static str, name: &'static str) -> DiscoveryResult {
@@ -27,7 +27,7 @@ fn make_undetected_result(id: &'static str, name: &'static str) -> DiscoveryResu
 // Tests for SelectionResult
 #[test]
 fn test_selection_result_empty() {
-    use super::selector::SelectionResult;
+    use crate::providers::selector::SelectionResult;
 
     let result = SelectionResult {
         selected_ids: vec![],
@@ -38,7 +38,7 @@ fn test_selection_result_empty() {
 
 #[test]
 fn test_selection_result_single_selection() {
-    use super::selector::SelectionResult;
+    use crate::providers::selector::SelectionResult;
 
     let result = SelectionResult {
         selected_ids: vec!["claude-code"],
@@ -50,7 +50,7 @@ fn test_selection_result_single_selection() {
 
 #[test]
 fn test_selection_result_multiple_selections() {
-    use super::selector::SelectionResult;
+    use crate::providers::selector::SelectionResult;
 
     let result = SelectionResult {
         selected_ids: vec!["claude-code", "cursor", "windsurf"],

@@ -20,23 +20,7 @@ use derive_more::Display;
 use serde::Serialize;
 
 #[cfg(test)]
-mod claude_tests;
-#[cfg(test)]
-mod clawdbot_tests;
-#[cfg(test)]
-mod codex_tests;
-#[cfg(test)]
-mod cursor_tests;
-#[cfg(test)]
-mod discovery_tests;
-#[cfg(test)]
-mod gemini_tests;
-#[cfg(test)]
-mod opencode_tests;
-#[cfg(test)]
-mod registry_tests;
-#[cfg(test)]
-mod selector_tests;
+mod tests;
 
 /// Enum representing all supported providers.
 /// Used for callback command routing.

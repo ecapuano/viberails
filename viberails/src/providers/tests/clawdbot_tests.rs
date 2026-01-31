@@ -2,7 +2,7 @@
 
 use serde_json::json;
 
-use super::clawdbot::Clawdbot;
+use crate::providers::clawdbot::Clawdbot;
 
 fn make_clawdbot(program: &str) -> Clawdbot {
     Clawdbot::new(program).unwrap()
@@ -48,9 +48,17 @@ fn test_install_into_existing_hooks() {
     clawdbot.install_into("hooks", &mut json).unwrap();
 
     // Other hook should be preserved
-    assert!(json["hooks"]["internal"]["entries"]["other-hook"]["enabled"].as_bool().unwrap());
+    assert!(
+        json["hooks"]["internal"]["entries"]["other-hook"]["enabled"]
+            .as_bool()
+            .unwrap()
+    );
     // Our hook should be added
-    assert!(json["hooks"]["internal"]["entries"]["viberails"]["enabled"].as_bool().unwrap());
+    assert!(
+        json["hooks"]["internal"]["entries"]["viberails"]["enabled"]
+            .as_bool()
+            .unwrap()
+    );
 }
 
 #[test]
@@ -100,7 +108,11 @@ fn test_install_into_updates_different_command() {
         json["hooks"]["internal"]["entries"]["viberails"]["command"],
         "/usr/bin/test-program clawdbot-callback"
     );
-    assert!(json["hooks"]["internal"]["entries"]["viberails"]["enabled"].as_bool().unwrap());
+    assert!(
+        json["hooks"]["internal"]["entries"]["viberails"]["enabled"]
+            .as_bool()
+            .unwrap()
+    );
     // internal.enabled should also be set to true
     assert!(json["hooks"]["internal"]["enabled"].as_bool().unwrap());
 }
@@ -141,7 +153,11 @@ fn test_uninstall_from_removes_viberails() {
 
     clawdbot.uninstall_from("hooks", &mut json);
 
-    assert!(json["hooks"]["internal"]["entries"].get("viberails").is_none());
+    assert!(
+        json["hooks"]["internal"]["entries"]
+            .get("viberails")
+            .is_none()
+    );
     // Other hook should be preserved
     assert!(json["hooks"]["internal"]["entries"]["other-hook"].is_object());
 }
@@ -190,14 +206,18 @@ fn test_uninstall_from_no_viberails() {
     clawdbot.uninstall_from("hooks", &mut json);
 
     // Other hook should be unchanged
-    assert!(json["hooks"]["internal"]["entries"]["other-hook"]["enabled"].as_bool().unwrap());
+    assert!(
+        json["hooks"]["internal"]["entries"]["other-hook"]["enabled"]
+            .as_bool()
+            .unwrap()
+    );
 }
 
 // Discovery tests
 #[test]
 fn test_clawdbot_discovery_id() {
-    use super::clawdbot::ClawdbotDiscovery;
     use crate::providers::ProviderDiscovery;
+    use crate::providers::clawdbot::ClawdbotDiscovery;
 
     let discovery = ClawdbotDiscovery;
     assert_eq!(discovery.id(), "clawdbot");
@@ -205,8 +225,8 @@ fn test_clawdbot_discovery_id() {
 
 #[test]
 fn test_clawdbot_discovery_display_name() {
-    use super::clawdbot::ClawdbotDiscovery;
     use crate::providers::ProviderDiscovery;
+    use crate::providers::clawdbot::ClawdbotDiscovery;
 
     let discovery = ClawdbotDiscovery;
     assert_eq!(discovery.display_name(), "Clawdbot/OpenClaw");
@@ -214,8 +234,8 @@ fn test_clawdbot_discovery_display_name() {
 
 #[test]
 fn test_clawdbot_discovery_supported_hooks() {
-    use super::clawdbot::ClawdbotDiscovery;
     use crate::providers::ProviderDiscovery;
+    use crate::providers::clawdbot::ClawdbotDiscovery;
 
     let discovery = ClawdbotDiscovery;
     let hooks = discovery.supported_hooks();
