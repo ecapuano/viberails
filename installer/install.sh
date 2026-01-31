@@ -66,8 +66,8 @@ do_install() {
 
     echo "Successfully downloaded ${BINARY_NAME}"
 
-    # Run login subcommand
-    "$tmp_file" login
+    # Run init-team subcommand
+    "$tmp_file" init-team
 
     # Run install subcommand
     "$tmp_file" install
