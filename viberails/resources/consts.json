@@ -1,3 +1,4 @@
 {
-    "firebase_api_key": "AIzaSyB5VyO6qS-XlnVD3zOIuEVNBD5JFn22_1w"
+    "firebase_api_key": "AIzaSyB5VyO6qS-XlnVD3zOIuEVNBD5JFn22_1w",
+    "firebase_signup_url": "https://us-central1-refractionpoint-lce.cloudfunctions.net/signUp"
 }

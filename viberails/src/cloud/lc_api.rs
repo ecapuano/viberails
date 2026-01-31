@@ -3,12 +3,10 @@ use bon::Builder;
 use log::info;
 use serde::{Deserialize, Serialize};
 
-use crate::{cloud::REQUEST_TIMEOUT_SECS, common::PROJECT_NAME};
+use crate::{cloud::REQUEST_TIMEOUT_SECS, common::PROJECT_NAME, default::get_embedded_default};
 
 const LC_JWT_URL: &str = "https://jwt.limacharlie.io";
 const LC_API_URL: &str = "https://api.limacharlie.io/v1";
-const FIREBASE_SIGNUP_URL: &str =
-    "https://us-central1-refractionpoint-lce.cloudfunctions.net/signUp";
 
 /// Metadata for user signup
 #[derive(Serialize)]
@@ -173,7 +171,8 @@ where
         },
     };
 
-    let res = minreq::post(FIREBASE_SIGNUP_URL)
+    let signup_url = get_embedded_default("firebase_signup_url");
+    let res = minreq::post(&signup_url)
         .with_timeout(REQUEST_TIMEOUT_SECS)
         .with_header("Authorization", format!("Bearer {}", id_token.as_ref()))
         .with_header("Content-Type", "application/json")
