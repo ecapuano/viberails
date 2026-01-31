@@ -40,6 +40,15 @@ impl ProviderRegistry {
         self.providers.iter().map(|p| p.discover()).collect()
     }
 
+    /// Discover all registered providers and check if our hooks are installed.
+    /// This is used for uninstall to determine which tools have our hooks.
+    pub fn discover_all_with_hooks_check(&self) -> Vec<DiscoveryResult> {
+        self.providers
+            .iter()
+            .map(|p| p.discover_with_hooks_check())
+            .collect()
+    }
+
     /// Get a provider factory by its ID.
     pub fn get(&self, id: &str) -> Option<&dyn ProviderFactory> {
         self.providers

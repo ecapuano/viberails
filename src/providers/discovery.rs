@@ -18,6 +18,8 @@ pub struct DiscoveryResult {
     pub detected_path: Option<PathBuf>,
     /// Hint for users when tool is not detected (e.g., "Install Claude Code from...")
     pub detection_hint: Option<String>,
+    /// Whether our hooks are installed in this tool (only meaningful if detected is true)
+    pub hooks_installed: bool,
 }
 
 /// Trait for discovering whether a provider tool is installed.
@@ -42,4 +44,30 @@ pub trait ProviderFactory: ProviderDiscovery {
     /// Create a new provider instance.
     /// The provider will use `std::env::current_exe()` to determine the program path for hook commands.
     fn create(&self) -> Result<Box<dyn LLmProviderTrait>>;
+
+    /// Discover the provider and check if our hooks are installed.
+    /// This calls `discover()` first, then if the tool is detected, creates the provider
+    /// and checks if any of its hooks contain our command.
+    fn discover_with_hooks_check(&self) -> DiscoveryResult {
+        let mut result = self.discover();
+
+        if !result.detected {
+            return result;
+        }
+
+        // Try to create provider and check for our hooks
+        if let Ok(provider) = self.create() {
+            if let Ok(hooks) = provider.list() {
+                // Check if any hook command contains our binary name
+                // We look for the callback command pattern (e.g., "viberails claude-callback")
+                result.hooks_installed = hooks.iter().any(|h| {
+                    h.command.contains("-callback") && h.command.contains("viberails")
+                        || h.command.ends_with("/viberails")
+                        || h.command.contains("/viberails ")
+                });
+            }
+        }
+
+        result
+    }
 }

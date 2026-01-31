@@ -67,6 +67,7 @@ impl ProviderDiscovery for ClawdbotDiscovery {
             detection_hint: Some(
                 "Install Clawdbot/OpenClaw: npm install -g clawdbot or visit https://github.com/clawdbot/clawdbot".into(),
             ),
+            hooks_installed: false, // Will be set by discover_with_hooks_check
         }
     }
 

@@ -17,10 +17,7 @@ use crate::{
 
 const ORG_CREATE_TIMEOUT: Duration = Duration::from_secs(120);
 
-#[cfg(debug_assertions)]
-const ORG_DEFAULT_LOCATION: &str = "exp";
-#[cfg(not(debug_assertions))]
-const ORG_DEFAULT_LOCATION: &str = "usa";
+const ORG_DEFAULT_LOCATION: &str = "auto";
 
 fn query_user(prompt: &str) -> Result<String> {
     let input = Text::new(prompt)

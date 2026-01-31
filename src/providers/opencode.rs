@@ -48,6 +48,7 @@ impl ProviderDiscovery for OpenCodeDiscovery {
             detected,
             detected_path,
             detection_hint: Some("Install OpenCode from https://opencode.ai/docs/cli/".into()),
+            hooks_installed: false, // Will be set by discover_with_hooks_check
         }
     }
 

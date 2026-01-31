@@ -47,6 +47,7 @@ impl ProviderDiscovery for CodexDiscovery {
             detection_hint: Some(
                 "Install Codex CLI from https://developers.openai.com/codex/quickstart/".into(),
             ),
+            hooks_installed: false, // Will be set by discover_with_hooks_check
         }
     }
 

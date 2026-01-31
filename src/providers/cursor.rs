@@ -43,6 +43,7 @@ impl ProviderDiscovery for CursorDiscovery {
             detected,
             detected_path,
             detection_hint: Some("Install Cursor from https://cursor.com/downloads".into()),
+            hooks_installed: false, // Will be set by discover_with_hooks_check
         }
     }
 

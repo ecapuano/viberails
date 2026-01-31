@@ -45,6 +45,7 @@ impl ProviderDiscovery for GeminiDiscovery {
             detection_hint: Some(
                 "Install Gemini CLI from https://github.com/google-gemini/gemini-cli".into(),
             ),
+            hooks_installed: false, // Will be set by discover_with_hooks_check
         }
     }
 

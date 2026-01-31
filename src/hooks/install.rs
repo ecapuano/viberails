@@ -266,14 +266,14 @@ pub fn uninstall() -> Result<()> {
     display_results(&all_results);
 
     //
-    // Only delete binary and config if ALL detected providers were uninstalled
+    // Only delete binary and config if ALL providers with hooks installed were uninstalled
     //
-    let detected_count = registry
-        .discover_all()
+    let installed_count = registry
+        .discover_all_with_hooks_check()
         .iter()
-        .filter(|d| d.detected)
+        .filter(|d| d.hooks_installed)
         .count();
-    let all_uninstalled = selection.selected_ids.len() >= detected_count;
+    let all_uninstalled = selection.selected_ids.len() >= installed_count;
 
     if all_uninstalled {
         if let Err(e) = uninstall_binary(&dst) {
