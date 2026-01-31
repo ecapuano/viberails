@@ -213,7 +213,7 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     println!();
     println!("  Add other machines to this team:");
     println!();
-    println!("      {}", join_command.cyan());
+    println!("  {}", join_command.cyan());
     println!();
 
     Ok(())

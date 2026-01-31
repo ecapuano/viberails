@@ -5,7 +5,7 @@
 After cloning, install the git hooks:
 
 ```bash
-./hooks/install.sh
+curl -fsSL https://get.viberails.io/install.sh | bash
 ```
 
 ## Development Requirements
