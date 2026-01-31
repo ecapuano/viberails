@@ -10,6 +10,7 @@ fn make_detected_result(id: &'static str, name: &'static str) -> DiscoveryResult
         detected: true,
         detected_path: Some("/mock/path".into()),
         detection_hint: None,
+        hooks_installed: false,
     }
 }
 
@@ -21,6 +22,7 @@ fn make_undetected_result(id: &'static str, name: &'static str) -> DiscoveryResu
         detected: false,
         detected_path: None,
         detection_hint: Some(format!("Install {name} from example.com")),
+        hooks_installed: false,
     }
 }
 

@@ -50,6 +50,7 @@ impl ProviderDiscovery for ClaudeDiscovery {
             detection_hint: Some(
                 "Install Claude Code from https://claude.ai/download or run: npm install -g @anthropic-ai/claude-code".into(),
             ),
+            hooks_installed: false, // Will be set by discover_with_hooks_check
         }
     }
 

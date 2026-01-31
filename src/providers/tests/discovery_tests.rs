@@ -45,6 +45,7 @@ impl ProviderDiscovery for AlwaysDetectedDiscovery {
             detected: true,
             detected_path: Some("/mock/path".into()),
             detection_hint: None,
+            hooks_installed: false,
         }
     }
 
@@ -80,6 +81,7 @@ impl ProviderDiscovery for NeverDetectedDiscovery {
             detected: false,
             detected_path: None,
             detection_hint: Some("Install from example.com".into()),
+            hooks_installed: false,
         }
     }
 
