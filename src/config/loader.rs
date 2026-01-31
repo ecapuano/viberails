@@ -182,30 +182,6 @@ fn display_configuration(config: &Config) {
 // PUBLIC
 ////////////////////////////////////////////////////////////////////////////////
 
-pub fn uninstall_config() -> Result<()> {
-    let config_dir = project_config_dir()?;
-    let config_file = config_dir.join("config.json");
-
-    if !config_dir.exists() {
-        info!("{} doesn't exist", config_dir.display());
-        return Ok(());
-    }
-
-    if config_file.exists() {
-        info!("removing {}", config_file.display());
-
-        fs::remove_file(&config_file)
-            .with_context(|| format!("Unable to delete {}", config_file.display()))?;
-    }
-
-    info!("Deleting {}", config_dir.display());
-
-    fs::remove_dir_all(&config_dir)
-        .with_context(|| format!("Unable to delete {}", config_dir.display()))?;
-
-    Ok(())
-}
-
 pub fn show_configuration() -> Result<()> {
     let config = Config::load()?;
 

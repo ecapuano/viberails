@@ -9,7 +9,7 @@ use log::{error, info, warn};
 
 use crate::{
     common::{EXECUTABLE_NAME, display_authorize_help, print_header},
-    config::{Config, uninstall_config},
+    config::Config,
     providers::{ProviderRegistry, select_providers, select_providers_for_uninstall},
 };
 
@@ -274,11 +274,8 @@ pub fn uninstall() -> Result<()> {
             error!("Unable to delete binary ({e}");
             success = false;
         }
-
-        if let Err(e) = uninstall_config() {
-            error!("Unable to delete config files ({e}");
-            success = false;
-        }
+        // Note: We intentionally preserve the config (including team membership)
+        // so users can reinstall without needing to rejoin their team.
     } else {
         println!(
             "\nHooks removed from selected tools. Binary and config retained for remaining tools."
