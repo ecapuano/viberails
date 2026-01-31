@@ -338,8 +338,8 @@ impl WebhookAdapter<'_> {
                     sensor_seed_key: self.sensor_seed_key,
                     mapping: Mapping {
                         event_type_path: "meta_data/type",
-                        sensor_key_path: "meta_data/installation_id",
-                        sensor_hostname_path: "meta_data/hostname",
+                        sensor_key_path: "{{.meta_data.installation_id}}{{.meta_data.source}}",
+                        sensor_hostname_path: "{{.meta_data.hostname}} - {{.meta_data.source}}",
                     },
                 },
             },
