@@ -12,6 +12,7 @@ use crate::{
     },
     common::PROJECT_NAME,
     config::{Config, LcOrg},
+    default::get_embedded_default,
     oauth::{LoginArgs, authorize},
 };
 
@@ -152,8 +153,7 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     if let Some(ref email) = login.email {
         println!("Setting up user profile...");
         info!("Creating user profile for {email}");
-        signup_user(&login.id_token, email)
-            .context("Failed to create user profile")?;
+        signup_user(&login.id_token, email).context("Failed to create user profile")?;
     } else {
         info!("No email in OAuth response, skipping user profile creation");
     }
@@ -206,20 +206,18 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     config.org = org;
     config.save()?;
 
-    let exe_name = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
-        .unwrap_or_else(|| "viberails".to_string());
+    let join_curl = get_embedded_default("join_team_command");
+    let join_command = format!("{} {}", join_curl, config.org.url);
 
     println!();
-    println!("{}", "Setup complete! Your team is ready.".green());
+    println!("  {} Setup complete!", "✓".green());
     println!();
-    println!("Team URL: {}", config.org.url.cyan());
+    println!("  Team: {}", config.org.name.cyan());
     println!();
-    println!(
-        "To add other machines to this team, run on each machine:\n  {} join-team {}",
-        exe_name, config.org.url
-    );
+    println!("  Add other machines to this team:");
+    println!();
+    println!("      {}", join_command.cyan());
+    println!();
 
     Ok(())
 }

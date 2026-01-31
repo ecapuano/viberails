@@ -33,9 +33,11 @@ pub struct UserArgs {
 #[derive(Subcommand)]
 enum Command {
     /// Initialize team configuration via OAuth
+    #[command(visible_alias = "init")]
     InitTeam(LoginArgs),
 
     /// Join an existing team using a team URL
+    #[command(visible_alias = "join")]
     JoinTeam(JoinTeamArgs),
 
     /// Configure
