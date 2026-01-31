@@ -267,14 +267,24 @@ pub fn uninstall() -> Result<()> {
 
     display_results(&all_results);
 
-    if let Err(e) = uninstall_binary(&dst) {
-        error!("Unable to delete binary ({e}");
-        success = false;
-    }
+    //
+    // Only delete binary and config if ALL detected providers were uninstalled
+    //
+    let detected_count = registry.discover_all().iter().filter(|d| d.detected).count();
+    let all_uninstalled = selection.selected_ids.len() >= detected_count;
 
-    if let Err(e) = uninstall_config() {
-        error!("Unable to delete config files ({e}");
-        success = false;
+    if all_uninstalled {
+        if let Err(e) = uninstall_binary(&dst) {
+            error!("Unable to delete binary ({e}");
+            success = false;
+        }
+
+        if let Err(e) = uninstall_config() {
+            error!("Unable to delete config files ({e}");
+            success = false;
+        }
+    } else {
+        println!("\nHooks removed from selected tools. Binary and config retained for remaining tools.");
     }
 
     if success {

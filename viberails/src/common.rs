@@ -20,7 +20,8 @@ pub fn display_authorize_help() {
     println!();
     println!("  Not logged in.");
     println!();
-    println!("  Run `{exe} login` to authenticate.");
+    println!("  Run `{exe} init-team` to create a new team, or");
+    println!("  Run `{exe} join-team <URL>` to join an existing team.");
     println!();
 }
 

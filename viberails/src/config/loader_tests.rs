@@ -4,7 +4,7 @@ use tempfile::NamedTempFile;
 
 use crate::config::loader::LcOrg;
 
-use super::loader::{Config, UserConfig};
+use super::loader::{Config, UserConfig, parse_team_url};
 
 #[test]
 fn test_user_config_default() {
@@ -94,4 +94,66 @@ fn test_config_serialization_roundtrip() {
 
     assert_eq!(config.user.fail_open, deserialized.user.fail_open);
     assert_eq!(config.install_id, deserialized.install_id);
+}
+
+// Tests for parse_team_url
+
+#[test]
+fn test_parse_team_url_valid() {
+    let url = "https://hooks.limacharlie.io/abc123/viberails/secret-token";
+    let oid = parse_team_url(url).unwrap();
+    assert_eq!(oid, "abc123");
+}
+
+#[test]
+fn test_parse_team_url_valid_with_trailing_slash() {
+    let url = "https://hooks.limacharlie.io/org-id-456/adapter/secret/";
+    let oid = parse_team_url(url).unwrap();
+    assert_eq!(oid, "org-id-456");
+}
+
+#[test]
+fn test_parse_team_url_rejects_http() {
+    let url = "http://hooks.limacharlie.io/abc123/viberails/secret";
+    let result = parse_team_url(url);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("HTTPS"));
+}
+
+#[test]
+fn test_parse_team_url_rejects_missing_segments() {
+    let url = "https://hooks.limacharlie.io/abc123/viberails";
+    let result = parse_team_url(url);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Invalid team URL format"));
+}
+
+#[test]
+fn test_parse_team_url_rejects_empty_oid() {
+    let url = "https://hooks.limacharlie.io//viberails/secret";
+    let result = parse_team_url(url);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("empty"));
+}
+
+#[test]
+fn test_parse_team_url_rejects_no_path() {
+    let url = "https://hooks.limacharlie.io";
+    let result = parse_team_url(url);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_parse_team_url_rejects_invalid_url() {
+    let url = "not-a-valid-url";
+    let result = parse_team_url(url);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Invalid URL"));
+}
+
+#[test]
+fn test_parse_team_url_rejects_no_host() {
+    let url = "https:///abc123/viberails/secret";
+    let result = parse_team_url(url);
+    assert!(result.is_err());
 }

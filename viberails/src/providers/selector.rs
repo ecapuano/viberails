@@ -53,6 +53,8 @@ fn run_selection(
     registry: &ProviderRegistry,
     prompt_text: &str,
     no_tools_message: &str,
+    no_tools_error: &str,
+    show_install_hints: bool,
 ) -> Result<Option<SelectionResult>> {
     let discoveries = registry.discover_all();
 
@@ -64,11 +66,13 @@ fn run_selection(
     let any_detected = discoveries.iter().any(|d| d.detected);
     if !any_detected {
         println!("\n{}", no_tools_message.yellow());
-        println!("\nSupported tools and installation hints:");
-        for d in &discoveries {
-            println!("  {} - {}", d.display_name, d.detection_hint.as_deref().unwrap_or("No installation hint available"));
+        if show_install_hints {
+            println!("\nSupported tools and installation hints:");
+            for d in &discoveries {
+                println!("  {} - {}", d.display_name, d.detection_hint.as_deref().unwrap_or("No installation hint available"));
+            }
         }
-        bail!("No tools detected. Please install a supported AI coding tool first.");
+        bail!("{}", no_tools_error);
     }
 
     let options: Vec<SelectableProvider> = discoveries
@@ -130,6 +134,8 @@ pub fn select_providers(registry: &ProviderRegistry) -> Result<Option<SelectionR
         registry,
         "Select AI coding tools to install hooks for:",
         "No supported AI coding tools detected on this system.",
+        "No tools detected. Please install a supported AI coding tool first.",
+        true, // show install hints
     )
 }
 
@@ -141,5 +147,7 @@ pub fn select_providers_for_uninstall(registry: &ProviderRegistry) -> Result<Opt
         registry,
         "Select AI coding tools to uninstall hooks from:",
         "No supported AI coding tools detected on this system.",
+        "No tools detected. Nothing to uninstall.",
+        false, // don't show install hints for uninstall
     )
 }

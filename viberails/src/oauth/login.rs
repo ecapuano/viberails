@@ -206,8 +206,20 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     config.org = org;
     config.save()?;
 
+    let exe_name = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.file_name().map(|s| s.to_string_lossy().into_owned()))
+        .unwrap_or_else(|| "viberails".to_string());
+
     println!();
-    println!("{}", "Login complete! You are now authenticated.".green());
+    println!("{}", "Setup complete! Your team is ready.".green());
+    println!();
+    println!("Team URL: {}", config.org.url.cyan());
+    println!();
+    println!(
+        "To add other machines to this team, run on each machine:\n  {} join-team {}",
+        exe_name, config.org.url
+    );
 
     Ok(())
 }

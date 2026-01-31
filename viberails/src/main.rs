@@ -12,7 +12,7 @@ use clap::{Parser, Subcommand};
 
 use crate::{
     common::PROJECT_NAME,
-    config::{ConfigureArgs, configure, show_configuration},
+    config::{ConfigureArgs, JoinTeamArgs, configure, join_team, show_configuration},
     hooks::{hook, install, list, uninstall},
     logging::Logging,
     oauth::{LoginArgs, login::login},
@@ -32,8 +32,11 @@ pub struct UserArgs {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Login via OAuth
-    Login(LoginArgs),
+    /// Initialize team configuration via OAuth
+    InitTeam(LoginArgs),
+
+    /// Join an existing team using a team URL
+    JoinTeam(JoinTeamArgs),
 
     /// Configure
     #[command(visible_alias = "config")]
@@ -98,7 +101,8 @@ fn main() -> Result<()> {
         Command::List => list(),
         Command::Configure(a) => configure(&a),
         Command::ShowConfiguration => show_configuration(),
-        Command::Login(args) => login(&args),
+        Command::InitTeam(args) => login(&args),
+        Command::JoinTeam(args) => join_team(&args),
 
         // Provider callbacks
         Command::ClaudeCallback => hook(Providers::ClaudeCode),

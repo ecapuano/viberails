@@ -21,6 +21,12 @@ pub struct ConfigureArgs {
     fail_open: bool,
 }
 
+#[derive(clap::Args)]
+pub struct JoinTeamArgs {
+    /// Team URL to join (obtained from init-team on another machine)
+    pub url: String,
+}
+
 #[derive(Serialize, Deserialize, Builder)]
 pub struct UserConfig {
     pub fail_open: bool,
@@ -192,6 +198,65 @@ pub fn configure(args: &ConfigureArgs) -> Result<()> {
     config.save()?;
 
     display_configuration(&config);
+
+    Ok(())
+}
+
+/// Parses a team URL and extracts the organization ID.
+/// URL format: https://{hooks_domain}/{oid}/{adapter_name}/{secret}
+pub(crate) fn parse_team_url(url: &str) -> Result<String> {
+    let parsed = url::Url::parse(url).context("Invalid URL format")?;
+
+    // Validate HTTPS
+    if parsed.scheme() != "https" {
+        anyhow::bail!("Team URL must use HTTPS");
+    }
+
+    // Validate host exists
+    if parsed.host_str().is_none() {
+        anyhow::bail!("Team URL must have a valid host");
+    }
+
+    // Extract path segments: /{oid}/{adapter_name}/{secret}
+    let segments: Vec<&str> = parsed
+        .path_segments()
+        .context("URL has no path segments")?
+        .collect();
+
+    if segments.len() < 3 {
+        anyhow::bail!(
+            "Invalid team URL format. Expected: https://hooks.domain/oid/name/secret"
+        );
+    }
+
+    // First segment is the oid
+    let oid = segments[0];
+    if oid.is_empty() {
+        anyhow::bail!("Organization ID in URL cannot be empty");
+    }
+
+    Ok(oid.to_string())
+}
+
+pub fn join_team(args: &JoinTeamArgs) -> Result<()> {
+    let mut config = Config::load()?;
+
+    let url = &args.url;
+    let oid = parse_team_url(url)?;
+
+    config.org = LcOrg {
+        oid,
+        name: String::new(), // We don't have the team name when joining
+        url: url.clone(),
+    };
+
+    config.save()?;
+
+    println!("Joined team successfully!");
+    println!();
+    println!("Team URL: {}", url);
+    println!();
+    println!("Run 'install' to set up hooks for your AI coding tools.");
 
     Ok(())
 }
