@@ -48,10 +48,12 @@ pub struct SelectionResult {
     pub selected_ids: Vec<&'static str>,
 }
 
-/// Show a multi-select UI for choosing which providers to install hooks for.
-/// Only detected providers can be selected.
-/// Returns None if the user cancels.
-pub fn select_providers(registry: &ProviderRegistry) -> Result<Option<SelectionResult>> {
+/// Internal helper to run the multi-select UI
+fn run_selection(
+    registry: &ProviderRegistry,
+    prompt_text: &str,
+    no_tools_message: &str,
+) -> Result<Option<SelectionResult>> {
     let discoveries = registry.discover_all();
 
     if discoveries.is_empty() {
@@ -61,7 +63,7 @@ pub fn select_providers(registry: &ProviderRegistry) -> Result<Option<SelectionR
     // Check if any providers are detected
     let any_detected = discoveries.iter().any(|d| d.detected);
     if !any_detected {
-        println!("\n{}", "No supported AI coding tools detected on this system.".yellow());
+        println!("\n{}", no_tools_message.yellow());
         println!("\nSupported tools and installation hints:");
         for d in &discoveries {
             println!("  {} - {}", d.display_name, d.detection_hint.as_deref().unwrap_or("No installation hint available"));
@@ -100,7 +102,7 @@ pub fn select_providers(registry: &ProviderRegistry) -> Result<Option<SelectionR
         Ok(Validation::Valid)
     };
 
-    let prompt = MultiSelect::new("Select AI coding tools to install hooks for:", options)
+    let prompt = MultiSelect::new(prompt_text, options)
         .with_default(&default_indices)
         .with_validator(validator)
         .with_help_message("Use ↑↓ to navigate, Space to toggle, Enter to confirm");
@@ -118,4 +120,26 @@ pub fn select_providers(registry: &ProviderRegistry) -> Result<Option<SelectionR
         }
         Err(e) => Err(e.into()),
     }
+}
+
+/// Show a multi-select UI for choosing which providers to install hooks for.
+/// Only detected providers can be selected.
+/// Returns None if the user cancels.
+pub fn select_providers(registry: &ProviderRegistry) -> Result<Option<SelectionResult>> {
+    run_selection(
+        registry,
+        "Select AI coding tools to install hooks for:",
+        "No supported AI coding tools detected on this system.",
+    )
+}
+
+/// Show a multi-select UI for choosing which providers to uninstall hooks from.
+/// Only detected providers can be selected.
+/// Returns None if the user cancels.
+pub fn select_providers_for_uninstall(registry: &ProviderRegistry) -> Result<Option<SelectionResult>> {
+    run_selection(
+        registry,
+        "Select AI coding tools to uninstall hooks from:",
+        "No supported AI coding tools detected on this system.",
+    )
 }

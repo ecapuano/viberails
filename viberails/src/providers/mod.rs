@@ -14,7 +14,7 @@ pub mod selector;
 #[allow(unused_imports)]
 pub use discovery::{DiscoveryResult, ProviderDiscovery, ProviderFactory};
 pub use registry::ProviderRegistry;
-pub use selector::select_providers;
+pub use selector::{select_providers, select_providers_for_uninstall};
 
 use derive_more::Display;
 use serde::Serialize;

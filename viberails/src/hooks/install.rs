@@ -10,7 +10,7 @@ use log::{error, info, warn};
 use crate::{
     common::{display_authorize_help, print_header},
     config::{Config, uninstall_config},
-    providers::{ProviderRegistry, select_providers},
+    providers::{ProviderRegistry, select_providers, select_providers_for_uninstall},
 };
 
 const LABEL_WIDTH: usize = 20;
@@ -240,13 +240,28 @@ pub fn uninstall() -> Result<()> {
     let dst = binary_location()?;
 
     //
-    // Uninstall hooks for all known providers
+    // Create the registry and let the user select providers to uninstall from
     //
     let registry = ProviderRegistry::new();
+    let selection = select_providers_for_uninstall(&registry)?;
+
+    let Some(selection) = selection else {
+        println!("Uninstallation cancelled.");
+        return Ok(());
+    };
+
+    if selection.selected_ids.is_empty() {
+        println!("No providers selected.");
+        return Ok(());
+    }
+
+    //
+    // Uninstall hooks for each selected provider
+    //
     let mut all_results = Vec::new();
 
-    for factory in registry.all() {
-        let results = uninstall_hooks_for_provider(&dst, &registry, factory.id());
+    for provider_id in &selection.selected_ids {
+        let results = uninstall_hooks_for_provider(&dst, &registry, provider_id);
         all_results.extend(results);
     }
 
