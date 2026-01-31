@@ -46,9 +46,7 @@ impl ProviderDiscovery for CursorDiscovery {
             display_name: self.display_name(),
             detected,
             detected_path,
-            detection_hint: Some(
-                "Install Cursor from https://cursor.com/downloads".into(),
-            ),
+            detection_hint: Some("Install Cursor from https://cursor.com/downloads".into()),
         }
     }
 
@@ -91,15 +89,15 @@ impl Cursor {
 
     /// Ensure the hooks file exists, creating it with default structure if needed.
     fn ensure_hooks_exist(&self) -> Result<()> {
-        if let Some(parent) = self.hooks_file.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent).with_context(|| {
-                    format!(
-                        "Unable to create Cursor config directory at {}",
-                        parent.display()
-                    )
-                })?;
-            }
+        if let Some(parent) = self.hooks_file.parent()
+            && !parent.exists()
+        {
+            fs::create_dir_all(parent).with_context(|| {
+                format!(
+                    "Unable to create Cursor config directory at {}",
+                    parent.display()
+                )
+            })?;
         }
 
         if !self.hooks_file.exists() {
@@ -160,7 +158,10 @@ impl Cursor {
             .any(|h| h.get("command").and_then(|c| c.as_str()) == Some(&self.command_line));
 
         if already_installed {
-            warn!("{hook_type} already exists in {}", self.hooks_file.display());
+            warn!(
+                "{hook_type} already exists in {}",
+                self.hooks_file.display()
+            );
             return Ok(());
         }
 
@@ -190,7 +191,10 @@ impl Cursor {
 
         let Some(hook_type_arr) = hooks_obj.get_mut(hook_type).and_then(|v| v.as_array_mut())
         else {
-            warn!("No {hook_type} hooks found in {}", self.hooks_file.display());
+            warn!(
+                "No {hook_type} hooks found in {}",
+                self.hooks_file.display()
+            );
             return;
         };
 
@@ -200,7 +204,10 @@ impl Cursor {
             .retain(|h| h.get("command").and_then(|c| c.as_str()) != Some(&self.command_line));
 
         if hook_type_arr.len() == original_len {
-            warn!("{hook_type} hook not found in {}", self.hooks_file.display());
+            warn!(
+                "{hook_type} hook not found in {}",
+                self.hooks_file.display()
+            );
         }
     }
 }
@@ -218,8 +225,9 @@ impl LLmProviderTrait for Cursor {
         let data = fs::read_to_string(&self.hooks_file)
             .with_context(|| format!("Unable to read {}", self.hooks_file.display()))?;
 
-        let mut json: Value = serde_json::from_str(&data)
-            .with_context(|| format!("Unable to parse JSON data in {}", self.hooks_file.display()))?;
+        let mut json: Value = serde_json::from_str(&data).with_context(|| {
+            format!("Unable to parse JSON data in {}", self.hooks_file.display())
+        })?;
 
         self.install_into(hook_type, &mut json)
             .with_context(|| format!("Unable to update {}", self.hooks_file.display()))?;
@@ -241,13 +249,17 @@ impl LLmProviderTrait for Cursor {
     }
 
     fn uninstall(&self, hook_type: &str) -> Result<()> {
-        info!("Uninstalling {hook_type} from {}", self.hooks_file.display());
+        info!(
+            "Uninstalling {hook_type} from {}",
+            self.hooks_file.display()
+        );
 
         let data = fs::read_to_string(&self.hooks_file)
             .with_context(|| format!("Unable to read {}", self.hooks_file.display()))?;
 
-        let mut json: Value = serde_json::from_str(&data)
-            .with_context(|| format!("Unable to parse JSON data in {}", self.hooks_file.display()))?;
+        let mut json: Value = serde_json::from_str(&data).with_context(|| {
+            format!("Unable to parse JSON data in {}", self.hooks_file.display())
+        })?;
 
         self.uninstall_from(hook_type, &mut json);
 
@@ -271,8 +283,9 @@ impl LLmProviderTrait for Cursor {
         let data = fs::read_to_string(&self.hooks_file)
             .with_context(|| format!("Unable to read {}", self.hooks_file.display()))?;
 
-        let json: Value = serde_json::from_str(&data)
-            .with_context(|| format!("Unable to parse JSON data in {}", self.hooks_file.display()))?;
+        let json: Value = serde_json::from_str(&data).with_context(|| {
+            format!("Unable to parse JSON data in {}", self.hooks_file.display())
+        })?;
 
         let mut entries = Vec::new();
 

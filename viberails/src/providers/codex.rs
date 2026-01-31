@@ -40,9 +40,7 @@ impl ProviderDiscovery for CodexDiscovery {
 
     fn discover(&self) -> DiscoveryResult {
         let codex_dir = Self::codex_dir();
-        let detected = codex_dir
-            .as_ref()
-            .is_some_and(|p| p.exists() && p.is_dir());
+        let detected = codex_dir.as_ref().is_some_and(|p| p.exists() && p.is_dir());
         let detected_path = codex_dir.filter(|p| p.exists());
 
         DiscoveryResult {
@@ -77,9 +75,8 @@ impl Codex {
     where
         P: AsRef<Path>,
     {
-        let codex_dir = CodexDiscovery::codex_dir().ok_or_else(|| {
-            anyhow!("Unable to determine Codex config directory")
-        })?;
+        let codex_dir = CodexDiscovery::codex_dir()
+            .ok_or_else(|| anyhow!("Unable to determine Codex config directory"))?;
 
         let config_file = codex_dir.join("config.toml");
         let command_line = format!("{} codex-callback", self_program.as_ref().display());
@@ -92,15 +89,15 @@ impl Codex {
 
     /// Ensure the config file exists, creating it with minimal content if needed.
     fn ensure_config_exists(&self) -> Result<()> {
-        if let Some(parent) = self.config_file.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent).with_context(|| {
-                    format!(
-                        "Unable to create Codex config directory at {}",
-                        parent.display()
-                    )
-                })?;
-            }
+        if let Some(parent) = self.config_file.parent()
+            && !parent.exists()
+        {
+            fs::create_dir_all(parent).with_context(|| {
+                format!(
+                    "Unable to create Codex config directory at {}",
+                    parent.display()
+                )
+            })?;
         }
 
         if !self.config_file.exists() {
@@ -122,11 +119,14 @@ impl Codex {
 
         if let Some(existing) = notify_entry {
             // Check if it's an array and if our command is already there
-            if let Some(arr) = existing.as_array() {
-                if arr.first().and_then(|v| v.as_str()) == Some(&self.command_line) {
-                    warn!("notify hook already exists in {}", self.config_file.display());
-                    return Ok(());
-                }
+            if let Some(arr) = existing.as_array()
+                && arr.first().and_then(|v| v.as_str()) == Some(&self.command_line)
+            {
+                warn!(
+                    "notify hook already exists in {}",
+                    self.config_file.display()
+                );
+                return Ok(());
             }
             // If there's an existing notify that's not ours, we can't just overwrite it
             // Log a warning but proceed (user might want to backup their existing config)
@@ -148,13 +148,12 @@ impl Codex {
     pub(crate) fn uninstall_from(&self, _hook_type: &str, toml: &mut Table) {
         let notify_entry = toml.get("notify");
 
-        if let Some(existing) = notify_entry {
-            if let Some(arr) = existing.as_array() {
-                if arr.first().and_then(|v| v.as_str()) == Some(&self.command_line) {
-                    toml.remove("notify");
-                    return;
-                }
-            }
+        if let Some(existing) = notify_entry
+            && let Some(arr) = existing.as_array()
+            && arr.first().and_then(|v| v.as_str()) == Some(&self.command_line)
+        {
+            toml.remove("notify");
+            return;
         }
 
         warn!("notify hook not found in {}", self.config_file.display());
@@ -181,15 +180,16 @@ impl LLmProviderTrait for Codex {
         self.install_into(hook_type, &mut toml)
             .with_context(|| format!("Unable to update {}", self.config_file.display()))?;
 
-        let toml_str = toml::to_string_pretty(&toml)
-            .context("Failed to serialize Codex config")?;
+        let toml_str = toml::to_string_pretty(&toml).context("Failed to serialize Codex config")?;
 
         let mut fd = fs::OpenOptions::new()
             .write(true)
             .truncate(true)
             .create(true)
             .open(&self.config_file)
-            .with_context(|| format!("Unable to open {} for writing", self.config_file.display()))?;
+            .with_context(|| {
+                format!("Unable to open {} for writing", self.config_file.display())
+            })?;
 
         fd.write_all(toml_str.as_bytes())
             .with_context(|| format!("Failed to write to {}", self.config_file.display()))?;
@@ -198,7 +198,10 @@ impl LLmProviderTrait for Codex {
     }
 
     fn uninstall(&self, hook_type: &str) -> Result<()> {
-        info!("Uninstalling {hook_type} from {}", self.config_file.display());
+        info!(
+            "Uninstalling {hook_type} from {}",
+            self.config_file.display()
+        );
 
         let data = fs::read_to_string(&self.config_file)
             .with_context(|| format!("Unable to read {}", self.config_file.display()))?;
@@ -209,15 +212,16 @@ impl LLmProviderTrait for Codex {
 
         self.uninstall_from(hook_type, &mut toml);
 
-        let toml_str = toml::to_string_pretty(&toml)
-            .context("Failed to serialize Codex config")?;
+        let toml_str = toml::to_string_pretty(&toml).context("Failed to serialize Codex config")?;
 
         let mut fd = fs::OpenOptions::new()
             .write(true)
             .truncate(true)
             .create(true)
             .open(&self.config_file)
-            .with_context(|| format!("Unable to open {} for writing", self.config_file.display()))?;
+            .with_context(|| {
+                format!("Unable to open {} for writing", self.config_file.display())
+            })?;
 
         fd.write_all(toml_str.as_bytes())
             .with_context(|| format!("Failed to write to {}", self.config_file.display()))?;
@@ -235,17 +239,15 @@ impl LLmProviderTrait for Codex {
 
         let mut entries = Vec::new();
 
-        if let Some(notify) = toml.get("notify") {
-            if let Some(arr) = notify.as_array() {
-                // First element is the command
-                if let Some(cmd) = arr.first().and_then(|v| v.as_str()) {
-                    entries.push(HookEntry {
-                        hook_type: "notify".to_string(),
-                        matcher: "*".to_string(),
-                        command: cmd.to_string(),
-                    });
-                }
-            }
+        if let Some(notify) = toml.get("notify")
+            && let Some(arr) = notify.as_array()
+            && let Some(cmd) = arr.first().and_then(|v| v.as_str())
+        {
+            entries.push(HookEntry {
+                hook_type: "notify".to_string(),
+                matcher: "*".to_string(),
+                command: cmd.to_string(),
+            });
         }
 
         Ok(entries)

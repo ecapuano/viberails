@@ -90,15 +90,15 @@ impl Gemini {
 
     /// Ensure the settings file exists, creating it with an empty JSON object if needed.
     fn ensure_settings_exist(&self) -> Result<()> {
-        if let Some(parent) = self.settings.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent).with_context(|| {
-                    format!(
-                        "Unable to create Gemini config directory at {}",
-                        parent.display()
-                    )
-                })?;
-            }
+        if let Some(parent) = self.settings.parent()
+            && !parent.exists()
+        {
+            fs::create_dir_all(parent).with_context(|| {
+                format!(
+                    "Unable to create Gemini config directory at {}",
+                    parent.display()
+                )
+            })?;
         }
 
         if !self.settings.exists() {

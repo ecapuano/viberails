@@ -66,10 +66,10 @@ fn mine_session_id(data: &Value) -> Option<String> {
     // This is to be accomodating for various providers and or versions
     // so we're mining for some kind of session id
     //
-    if let Some(session_value) = data.get("session_id") {
-        if let Some(session_id) = session_value.as_str() {
-            return Some(session_id.to_string());
-        }
+    if let Some(session_value) = data.get("session_id")
+        && let Some(session_id) = session_value.as_str()
+    {
+        return Some(session_id.to_string());
     }
 
     //

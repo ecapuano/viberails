@@ -25,12 +25,7 @@ impl SelectableProvider {
 impl fmt::Display for SelectableProvider {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.result.detected {
-            write!(
-                f,
-                "{} {}",
-                self.result.display_name,
-                "[detected]".green()
-            )
+            write!(f, "{} {}", self.result.display_name, "[detected]".green())
         } else {
             write!(
                 f,
@@ -69,10 +64,16 @@ fn run_selection(
         if show_install_hints {
             println!("\nSupported tools and installation hints:");
             for d in &discoveries {
-                println!("  {} - {}", d.display_name, d.detection_hint.as_deref().unwrap_or("No installation hint available"));
+                println!(
+                    "  {} - {}",
+                    d.display_name,
+                    d.detection_hint
+                        .as_deref()
+                        .unwrap_or("No installation hint available")
+                );
             }
         }
-        bail!("{}", no_tools_error);
+        bail!("{no_tools_error}");
     }
 
     let options: Vec<SelectableProvider> = discoveries
@@ -92,13 +93,19 @@ fn run_selection(
     // and at least one is selected
     let validator = |selections: &[inquire::list_option::ListOption<&SelectableProvider>]| {
         if selections.is_empty() {
-            return Ok(Validation::Invalid("Please select at least one tool".into()));
+            return Ok(Validation::Invalid(
+                "Please select at least one tool".into(),
+            ));
         }
 
         for selection in selections {
             if !selection.value.is_selectable() {
                 return Ok(Validation::Invalid(
-                    format!("{} is not installed and cannot be selected", selection.value.result.display_name).into()
+                    format!(
+                        "{} is not installed and cannot be selected",
+                        selection.value.result.display_name
+                    )
+                    .into(),
                 ));
             }
         }
@@ -113,15 +120,13 @@ fn run_selection(
 
     match prompt.prompt() {
         Ok(selections) => {
-            let selected_ids: Vec<&'static str> = selections
-                .into_iter()
-                .map(|p| p.result.id)
-                .collect();
+            let selected_ids: Vec<&'static str> =
+                selections.into_iter().map(|p| p.result.id).collect();
             Ok(Some(SelectionResult { selected_ids }))
         }
-        Err(inquire::InquireError::OperationCanceled | inquire::InquireError::OperationInterrupted) => {
-            Ok(None)
-        }
+        Err(
+            inquire::InquireError::OperationCanceled | inquire::InquireError::OperationInterrupted,
+        ) => Ok(None),
         Err(e) => Err(e.into()),
     }
 }
@@ -142,7 +147,9 @@ pub fn select_providers(registry: &ProviderRegistry) -> Result<Option<SelectionR
 /// Show a multi-select UI for choosing which providers to uninstall hooks from.
 /// Only detected providers can be selected.
 /// Returns None if the user cancels.
-pub fn select_providers_for_uninstall(registry: &ProviderRegistry) -> Result<Option<SelectionResult>> {
+pub fn select_providers_for_uninstall(
+    registry: &ProviderRegistry,
+) -> Result<Option<SelectionResult>> {
     run_selection(
         registry,
         "Select AI coding tools to uninstall hooks from:",

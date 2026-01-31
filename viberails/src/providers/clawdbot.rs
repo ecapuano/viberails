@@ -21,7 +21,7 @@ pub struct ClawdbotDiscovery;
 impl ClawdbotDiscovery {
     /// Get the Clawdbot config directory and config file name.
     /// Clawdbot has been renamed to `OpenClaw`, check both locations.
-    /// Returns (directory_path, config_file_name)
+    /// Returns (`directory_path`, `config_file_name`)
     fn clawdbot_paths() -> Option<(PathBuf, &'static str)> {
         dirs::home_dir().map(|h| {
             let openclaw = h.join(".openclaw");
@@ -45,9 +45,8 @@ impl ClawdbotDiscovery {
 
     /// Check if either clawdbot or openclaw directory exists
     fn is_detected() -> bool {
-        dirs::home_dir().is_some_and(|h| {
-            h.join(".openclaw").exists() || h.join(".clawdbot").exists()
-        })
+        dirs::home_dir()
+            .is_some_and(|h| h.join(".openclaw").exists() || h.join(".clawdbot").exists())
     }
 }
 
@@ -62,11 +61,7 @@ impl ProviderDiscovery for ClawdbotDiscovery {
 
     fn discover(&self) -> DiscoveryResult {
         let detected = Self::is_detected();
-        let detected_path = if detected {
-            Self::clawdbot_dir()
-        } else {
-            None
-        };
+        let detected_path = if detected { Self::clawdbot_dir() } else { None };
 
         DiscoveryResult {
             id: self.id(),
@@ -100,9 +95,8 @@ impl Clawdbot {
     where
         P: AsRef<Path>,
     {
-        let (clawdbot_dir, config_name) = ClawdbotDiscovery::clawdbot_paths().ok_or_else(|| {
-            anyhow!("Unable to determine Clawdbot config directory")
-        })?;
+        let (clawdbot_dir, config_name) = ClawdbotDiscovery::clawdbot_paths()
+            .ok_or_else(|| anyhow!("Unable to determine Clawdbot config directory"))?;
 
         let config_file = clawdbot_dir.join(config_name);
         let command_line = format!("{} clawdbot-callback", self_program.as_ref().display());
@@ -115,15 +109,15 @@ impl Clawdbot {
 
     /// Ensure the config file exists, creating it with minimal content if needed.
     fn ensure_config_exists(&self) -> Result<()> {
-        if let Some(parent) = self.config_file.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent).with_context(|| {
-                    format!(
-                        "Unable to create Clawdbot config directory at {}",
-                        parent.display()
-                    )
-                })?;
-            }
+        if let Some(parent) = self.config_file.parent()
+            && !parent.exists()
+        {
+            fs::create_dir_all(parent).with_context(|| {
+                format!(
+                    "Unable to create Clawdbot config directory at {}",
+                    parent.display()
+                )
+            })?;
         }
 
         if !self.config_file.exists() {
@@ -185,13 +179,14 @@ impl Clawdbot {
             })?;
 
         // Check if viberails is already registered
-        if entries_obj.contains_key("viberails") {
-            if let Some(existing) = entries_obj.get("viberails") {
-                if existing.get("command").and_then(|c| c.as_str()) == Some(&self.command_line) {
-                    warn!("viberails hook already exists in {}", self.config_file.display());
-                    return Ok(());
-                }
-            }
+        if let Some(existing) = entries_obj.get("viberails")
+            && existing.get("command").and_then(|c| c.as_str()) == Some(&self.command_line)
+        {
+            warn!(
+                "viberails hook already exists in {}",
+                self.config_file.display()
+            );
+            return Ok(());
         }
 
         // Add our hook entry
@@ -217,7 +212,10 @@ impl Clawdbot {
             .and_then(|e| e.as_object_mut());
 
         let Some(entries_obj) = entries_obj else {
-            warn!("No hooks.internal.entries found in {}", self.config_file.display());
+            warn!(
+                "No hooks.internal.entries found in {}",
+                self.config_file.display()
+            );
             return;
         };
 
@@ -254,7 +252,9 @@ impl LLmProviderTrait for Clawdbot {
             .truncate(true)
             .create(true)
             .open(&self.config_file)
-            .with_context(|| format!("Unable to open {} for writing", self.config_file.display()))?;
+            .with_context(|| {
+                format!("Unable to open {} for writing", self.config_file.display())
+            })?;
 
         fd.write_all(json_str.as_bytes())
             .with_context(|| format!("Failed to write to {}", self.config_file.display()))?;
@@ -263,7 +263,10 @@ impl LLmProviderTrait for Clawdbot {
     }
 
     fn uninstall(&self, hook_type: &str) -> Result<()> {
-        info!("Uninstalling {hook_type} from {}", self.config_file.display());
+        info!(
+            "Uninstalling {hook_type} from {}",
+            self.config_file.display()
+        );
 
         let data = fs::read_to_string(&self.config_file)
             .with_context(|| format!("Unable to read {}", self.config_file.display()))?;
@@ -281,7 +284,9 @@ impl LLmProviderTrait for Clawdbot {
             .truncate(true)
             .create(true)
             .open(&self.config_file)
-            .with_context(|| format!("Unable to open {} for writing", self.config_file.display()))?;
+            .with_context(|| {
+                format!("Unable to open {} for writing", self.config_file.display())
+            })?;
 
         fd.write_all(json_str.as_bytes())
             .with_context(|| format!("Failed to write to {}", self.config_file.display()))?;

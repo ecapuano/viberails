@@ -51,9 +51,7 @@ impl ProviderDiscovery for OpenCodeDiscovery {
             display_name: self.display_name(),
             detected,
             detected_path,
-            detection_hint: Some(
-                "Install OpenCode from https://opencode.ai/docs/cli/".into(),
-            ),
+            detection_hint: Some("Install OpenCode from https://opencode.ai/docs/cli/".into()),
         }
     }
 
@@ -78,9 +76,8 @@ impl OpenCode {
     where
         P: AsRef<Path>,
     {
-        let opencode_dir = OpenCodeDiscovery::opencode_dir().ok_or_else(|| {
-            anyhow!("Unable to determine OpenCode config directory")
-        })?;
+        let opencode_dir = OpenCodeDiscovery::opencode_dir()
+            .ok_or_else(|| anyhow!("Unable to determine OpenCode config directory"))?;
 
         let config_file = opencode_dir.join("opencode.json");
         let command_line = format!("{} opencode-callback", self_program.as_ref().display());
@@ -93,15 +90,15 @@ impl OpenCode {
 
     /// Ensure the config file exists, creating it with minimal content if needed.
     fn ensure_config_exists(&self) -> Result<()> {
-        if let Some(parent) = self.config_file.parent() {
-            if !parent.exists() {
-                fs::create_dir_all(parent).with_context(|| {
-                    format!(
-                        "Unable to create OpenCode config directory at {}",
-                        parent.display()
-                    )
-                })?;
-            }
+        if let Some(parent) = self.config_file.parent()
+            && !parent.exists()
+        {
+            fs::create_dir_all(parent).with_context(|| {
+                format!(
+                    "Unable to create OpenCode config directory at {}",
+                    parent.display()
+                )
+            })?;
         }
 
         if !self.config_file.exists() {
@@ -138,14 +135,14 @@ impl OpenCode {
             })?;
 
         // Check if viberails plugin is already registered
-        if plugins_obj.contains_key("viberails") {
-            // Check if it's our command
-            if let Some(existing) = plugins_obj.get("viberails") {
-                if existing.get("command").and_then(|c| c.as_str()) == Some(&self.command_line) {
-                    warn!("viberails plugin already exists in {}", self.config_file.display());
-                    return Ok(());
-                }
-            }
+        if let Some(existing) = plugins_obj.get("viberails")
+            && existing.get("command").and_then(|c| c.as_str()) == Some(&self.command_line)
+        {
+            warn!(
+                "viberails plugin already exists in {}",
+                self.config_file.display()
+            );
+            return Ok(());
         }
 
         // Add our plugin config
@@ -173,7 +170,10 @@ impl OpenCode {
         };
 
         if plugins_obj.remove("viberails").is_none() {
-            warn!("viberails plugin not found in {}", self.config_file.display());
+            warn!(
+                "viberails plugin not found in {}",
+                self.config_file.display()
+            );
         }
     }
 }
@@ -205,7 +205,9 @@ impl LLmProviderTrait for OpenCode {
             .truncate(true)
             .create(true)
             .open(&self.config_file)
-            .with_context(|| format!("Unable to open {} for writing", self.config_file.display()))?;
+            .with_context(|| {
+                format!("Unable to open {} for writing", self.config_file.display())
+            })?;
 
         fd.write_all(json_str.as_bytes())
             .with_context(|| format!("Failed to write to {}", self.config_file.display()))?;
@@ -214,7 +216,10 @@ impl LLmProviderTrait for OpenCode {
     }
 
     fn uninstall(&self, hook_type: &str) -> Result<()> {
-        info!("Uninstalling {hook_type} from {}", self.config_file.display());
+        info!(
+            "Uninstalling {hook_type} from {}",
+            self.config_file.display()
+        );
 
         let data = fs::read_to_string(&self.config_file)
             .with_context(|| format!("Unable to read {}", self.config_file.display()))?;
@@ -232,7 +237,9 @@ impl LLmProviderTrait for OpenCode {
             .truncate(true)
             .create(true)
             .open(&self.config_file)
-            .with_context(|| format!("Unable to open {} for writing", self.config_file.display()))?;
+            .with_context(|| {
+                format!("Unable to open {} for writing", self.config_file.display())
+            })?;
 
         fd.write_all(json_str.as_bytes())
             .with_context(|| format!("Failed to write to {}", self.config_file.display()))?;

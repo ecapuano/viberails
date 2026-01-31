@@ -236,7 +236,7 @@ pub fn configure(args: &ConfigureArgs) -> Result<()> {
 }
 
 /// Parses a team URL and extracts the organization ID.
-/// URL format: https://{hooks_domain}/{oid}/{adapter_name}/{secret}
+/// URL format: `https://{hooks_domain}/{oid}/{adapter_name}/{secret}`
 pub(crate) fn parse_team_url(url: &str) -> Result<String> {
     let parsed = url::Url::parse(url).context("Invalid URL format")?;
 
@@ -257,18 +257,18 @@ pub(crate) fn parse_team_url(url: &str) -> Result<String> {
         .collect();
 
     if segments.len() < 3 {
-        anyhow::bail!(
-            "Invalid team URL format. Expected: https://hooks.domain/oid/name/secret"
-        );
+        anyhow::bail!("Invalid team URL format. Expected: https://hooks.domain/oid/name/secret");
     }
 
     // First segment is the oid
-    let oid = segments[0];
+    let oid = segments
+        .first()
+        .ok_or_else(|| anyhow::anyhow!("URL has no path segments"))?;
     if oid.is_empty() {
         anyhow::bail!("Organization ID in URL cannot be empty");
     }
 
-    Ok(oid.to_string())
+    Ok((*oid).to_string())
 }
 
 pub fn join_team(args: &JoinTeamArgs) -> Result<()> {
@@ -287,7 +287,7 @@ pub fn join_team(args: &JoinTeamArgs) -> Result<()> {
 
     println!("Joined team successfully!");
     println!();
-    println!("Team URL: {}", url);
+    println!("Team URL: {url}");
     println!();
     println!("Run 'install' to set up hooks for your AI coding tools.");
 

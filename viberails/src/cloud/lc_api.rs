@@ -90,6 +90,7 @@ struct ClientOptions<'a> {
 }
 
 #[derive(Serialize)]
+#[allow(clippy::struct_field_names)]
 struct Mapping<'a> {
     event_type_path: &'a str,
     sensor_key_path: &'a str,
