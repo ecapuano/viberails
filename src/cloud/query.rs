@@ -39,11 +39,15 @@ struct CloudRequestMeta<'a> {
     ts: u128,
     installation_id: &'a str,
     request_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     hostname: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     session_id: Option<String>,
     source: &'a Providers,
     #[serde(rename = "type")]
     query_type: CloudQueryType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    username: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -106,6 +110,12 @@ impl<'a> CloudRequestMeta<'a> {
             None
         };
 
+        let username = if let Ok(username) = whoami::username() {
+            Some(username)
+        } else {
+            None
+        };
+
         Ok(Self {
             ts,
             installation_id,
@@ -114,6 +124,7 @@ impl<'a> CloudRequestMeta<'a> {
             session_id,
             source,
             query_type,
+            username,
         })
     }
 }
