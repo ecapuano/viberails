@@ -6,6 +6,7 @@ mod hooks;
 mod logging;
 mod oauth;
 mod providers;
+mod upgrade;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -17,6 +18,7 @@ use crate::{
     logging::Logging,
     oauth::{LoginArgs, login::login},
     providers::Providers,
+    upgrade::upgrade,
 };
 
 #[derive(Parser)]
@@ -52,6 +54,9 @@ enum Command {
     /// List Hooks
     #[command(visible_alias = "ls")]
     List,
+
+    /// Upgrade
+    Upgrade,
 
     // Provider callback commands (internal - used by hooks)
     /// Claude Code callback
@@ -103,6 +108,7 @@ fn main() -> Result<()> {
         Command::ShowConfiguration => show_configuration(),
         Command::InitTeam(args) => login(&args),
         Command::JoinTeam(args) => join_team(&args),
+        Command::Upgrade => upgrade(),
 
         // Provider callbacks
         Command::ClaudeCallback => hook(Providers::ClaudeCode),

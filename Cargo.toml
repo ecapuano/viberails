@@ -1,6 +1,6 @@
 [package]
 name = "viberails"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 
 [dependencies]
@@ -23,6 +23,7 @@ rust-embed = { version = "8.11", features = ["debug-embed", "include-exclude"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tabled = "0.20"
+tempfile = "3.24"
 tiny_http = "0.12"
 toml = "0.9"
 url = "2.5"

@@ -10,6 +10,11 @@ pub const EXECUTABLE_NAME: &str = concat!(env!("CARGO_PKG_NAME"), ".exe");
 #[cfg(not(windows))]
 pub const EXECUTABLE_NAME: &str = env!("CARGO_PKG_NAME");
 
+#[cfg(windows)]
+pub const EXECUTABLE_EXT: &str = ".exe";
+#[cfg(not(windows))]
+pub const EXECUTABLE_EXT: &str = "";
+
 pub fn print_header() {
     println!("{PROJECT_NAME} {PROJECT_VERSION}");
 }

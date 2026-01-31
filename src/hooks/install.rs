@@ -157,7 +157,11 @@ fn uninstall_binary(dst: &Path) -> Result<()> {
     Ok(())
 }
 
-fn binary_location() -> Result<PathBuf> {
+////////////////////////////////////////////////////////////////////////////////
+// PUBLIC
+////////////////////////////////////////////////////////////////////////////////
+
+pub fn binary_location() -> Result<PathBuf> {
     let home = dirs::home_dir().ok_or_else(|| {
         anyhow!("Unable to determine home directory. Ensure HOME environment variable is set")
     })?;
@@ -171,10 +175,6 @@ fn binary_location() -> Result<PathBuf> {
 
     Ok(local_bin.join(EXECUTABLE_NAME))
 }
-
-////////////////////////////////////////////////////////////////////////////////
-// PUBLIC
-////////////////////////////////////////////////////////////////////////////////
 
 pub fn install() -> Result<()> {
     //
