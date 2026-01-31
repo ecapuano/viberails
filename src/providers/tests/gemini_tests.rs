@@ -2,10 +2,19 @@
 
 use serde_json::json;
 
+use crate::common::{EXECUTABLE_NAME, PROJECT_NAME};
 use crate::providers::gemini::Gemini;
 
-fn make_gemini(program: &str) -> Gemini {
+fn make_gemini<P: AsRef<std::path::Path>>(program: P) -> Gemini {
     Gemini::with_custom_path(program).unwrap()
+}
+
+fn test_exe_path() -> String {
+    format!("/usr/bin/{EXECUTABLE_NAME}")
+}
+
+fn test_command() -> String {
+    format!("/usr/bin/{EXECUTABLE_NAME} gemini-callback")
 }
 
 #[test]
@@ -25,7 +34,7 @@ fn test_install_into_empty_json() {
         "/usr/bin/test-program gemini-callback"
     );
     assert_eq!(hooks_arr[0]["hooks"][0]["type"], "command");
-    assert_eq!(hooks_arr[0]["hooks"][0]["name"], "viberails");
+    assert_eq!(hooks_arr[0]["hooks"][0]["name"], PROJECT_NAME);
 }
 
 #[test]
@@ -134,14 +143,14 @@ fn test_install_into_different_hook_types() {
 
 #[test]
 fn test_uninstall_from_removes_our_hook() {
-    let gemini = make_gemini("/usr/bin/test-program");
+    let gemini = make_gemini(test_exe_path());
     let mut json = json!({
         "hooks": {
             "BeforeTool": [
                 {
                     "matcher": "*",
                     "hooks": [
-                        {"type": "command", "command": "/usr/bin/test-program gemini-callback"}
+                        {"type": "command", "command": test_command()}
                     ]
                 }
             ]
@@ -156,7 +165,7 @@ fn test_uninstall_from_removes_our_hook() {
 
 #[test]
 fn test_uninstall_from_preserves_other_hooks() {
-    let gemini = make_gemini("/usr/bin/test-program");
+    let gemini = make_gemini(test_exe_path());
     let mut json = json!({
         "hooks": {
             "BeforeTool": [
@@ -164,7 +173,7 @@ fn test_uninstall_from_preserves_other_hooks() {
                     "matcher": "*",
                     "hooks": [
                         {"type": "command", "command": "/other/program"},
-                        {"type": "command", "command": "/usr/bin/test-program gemini-callback"},
+                        {"type": "command", "command": test_command()},
                         {"type": "command", "command": "/another/program"}
                     ]
                 }

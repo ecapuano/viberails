@@ -4,6 +4,8 @@ use anyhow::{Result, bail};
 use colored::Colorize;
 use inquire::{MultiSelect, validator::Validation};
 
+use crate::common::PROJECT_NAME;
+
 use super::discovery::DiscoveryResult;
 use super::registry::ProviderRegistry;
 
@@ -189,7 +191,7 @@ fn run_uninstall_selection(
         } else {
             println!(
                 "\n{}",
-                "No viberails hooks are installed in any detected tools.".yellow()
+                format!("No {PROJECT_NAME} hooks are installed in any detected tools.").yellow()
             );
             println!("\nDetected tools (hooks not installed):");
             for d in &detected_tools {

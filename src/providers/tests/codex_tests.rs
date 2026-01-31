@@ -2,14 +2,23 @@
 
 use toml::Table;
 
+use crate::common::EXECUTABLE_NAME;
 use crate::providers::codex::Codex;
 
-fn make_codex(program: &str) -> Codex {
+fn make_codex<P: AsRef<std::path::Path>>(program: P) -> Codex {
     Codex::with_custom_path(program).unwrap()
 }
 
 fn parse_toml(s: &str) -> Table {
     s.parse().unwrap()
+}
+
+fn test_exe_path() -> String {
+    format!("/usr/bin/{EXECUTABLE_NAME}")
+}
+
+fn test_command() -> String {
+    format!("/usr/bin/{EXECUTABLE_NAME} codex-callback")
 }
 
 #[test]
@@ -84,13 +93,14 @@ notify = ["/other/program", "arg1"]
 
 #[test]
 fn test_uninstall_from_removes_our_notify() {
-    let codex = make_codex("/usr/bin/test-program");
-    let mut toml = parse_toml(
+    let codex = make_codex(test_exe_path());
+    let mut toml = parse_toml(&format!(
         r#"
-notify = ["/usr/bin/test-program codex-callback"]
+notify = ["{cmd}"]
 model = "gpt-4"
 "#,
-    );
+        cmd = test_command()
+    ));
 
     codex.uninstall_from("notify", &mut toml);
 

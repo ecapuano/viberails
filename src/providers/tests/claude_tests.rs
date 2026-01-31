@@ -1,6 +1,15 @@
 use serde_json::json;
 
+use crate::common::EXECUTABLE_NAME;
 use crate::providers::claude::Claude;
+
+fn test_exe_path() -> String {
+    format!("/usr/bin/{EXECUTABLE_NAME}")
+}
+
+fn test_command() -> String {
+    format!("/usr/bin/{EXECUTABLE_NAME} claude-callback")
+}
 
 #[test]
 fn test_install_into_empty_json() {
@@ -158,14 +167,14 @@ fn test_install_into_fails_if_hooks_not_object() {
 
 #[test]
 fn test_uninstall_from_removes_our_hook() {
-    let claude = Claude::with_custom_path("/usr/bin/test-program").unwrap();
+    let claude = Claude::with_custom_path(test_exe_path()).unwrap();
     let mut json = json!({
         "hooks": {
             "PreToolUse": [
                 {
                     "matcher": "*",
                     "hooks": [
-                        {"type": "command", "command": "/usr/bin/test-program claude-callback"}
+                        {"type": "command", "command": test_command()}
                     ]
                 }
             ]
@@ -182,7 +191,7 @@ fn test_uninstall_from_removes_our_hook() {
 
 #[test]
 fn test_uninstall_from_preserves_other_hooks() {
-    let claude = Claude::with_custom_path("/usr/bin/test-program").unwrap();
+    let claude = Claude::with_custom_path(test_exe_path()).unwrap();
     let mut json = json!({
         "hooks": {
             "PreToolUse": [
@@ -190,7 +199,7 @@ fn test_uninstall_from_preserves_other_hooks() {
                     "matcher": "*",
                     "hooks": [
                         {"type": "command", "command": "/other/program"},
-                        {"type": "command", "command": "/usr/bin/test-program claude-callback"},
+                        {"type": "command", "command": test_command()},
                         {"type": "command", "command": "/another/program"}
                     ]
                 }
@@ -283,14 +292,14 @@ fn test_uninstall_from_hook_not_present() {
 
 #[test]
 fn test_uninstall_from_different_hook_types() {
-    let claude = Claude::with_custom_path("/usr/bin/test-program").unwrap();
+    let claude = Claude::with_custom_path(test_exe_path()).unwrap();
     let mut json = json!({
         "hooks": {
             "PreToolUse": [
                 {
                     "matcher": "*",
                     "hooks": [
-                        {"type": "command", "command": "/usr/bin/test-program claude-callback"}
+                        {"type": "command", "command": test_command()}
                     ]
                 }
             ],
@@ -298,7 +307,7 @@ fn test_uninstall_from_different_hook_types() {
                 {
                     "matcher": "*",
                     "hooks": [
-                        {"type": "command", "command": "/usr/bin/test-program claude-callback"}
+                        {"type": "command", "command": test_command()}
                     ]
                 }
             ]

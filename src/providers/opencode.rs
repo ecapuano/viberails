@@ -4,6 +4,7 @@ use anyhow::{Context, Result, anyhow};
 use log::{info, warn};
 use serde_json::{Value, json};
 
+use crate::common::PROJECT_NAME;
 use crate::providers::discovery::{DiscoveryResult, ProviderDiscovery, ProviderFactory};
 use crate::providers::{HookEntry, LLmProviderTrait};
 
@@ -133,12 +134,12 @@ impl OpenCode {
                 )
             })?;
 
-        // Check if viberails plugin is already registered
-        if let Some(existing) = plugins_obj.get("viberails")
+        // Check if plugin is already registered
+        if let Some(existing) = plugins_obj.get(PROJECT_NAME)
             && existing.get("command").and_then(|c| c.as_str()) == Some(&self.command_line)
         {
             warn!(
-                "viberails plugin already exists in {}",
+                "{PROJECT_NAME} plugin already exists in {}",
                 self.config_file.display()
             );
             return Ok(());
@@ -146,11 +147,11 @@ impl OpenCode {
 
         // Add our plugin config
         plugins_obj.insert(
-            "viberails".to_string(),
+            PROJECT_NAME.to_string(),
             json!({
                 "enabled": true,
                 "command": &self.command_line,
-                "description": "Viberails security hooks"
+                "description": format!("{PROJECT_NAME} security hooks")
             }),
         );
 
@@ -168,9 +169,9 @@ impl OpenCode {
             return;
         };
 
-        if plugins_obj.remove("viberails").is_none() {
+        if plugins_obj.remove(PROJECT_NAME).is_none() {
             warn!(
-                "viberails plugin not found in {}",
+                "{PROJECT_NAME} plugin not found in {}",
                 self.config_file.display()
             );
         }

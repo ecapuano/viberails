@@ -8,7 +8,7 @@ use colored::Colorize;
 use log::{error, info, warn};
 
 use crate::{
-    common::{PROJECT_NAME, display_authorize_help, print_header},
+    common::{EXECUTABLE_NAME, display_authorize_help, print_header},
     config::{Config, uninstall_config},
     providers::{ProviderRegistry, select_providers, select_providers_for_uninstall},
 };
@@ -169,13 +169,7 @@ fn binary_location() -> Result<PathBuf> {
             .with_context(|| format!("Unable to create {}", local_bin.display()))?;
     }
 
-    let file_name = if cfg!(target_os = "windows") {
-        format!("{PROJECT_NAME}.exe")
-    } else {
-        PROJECT_NAME.to_string()
-    };
-
-    Ok(local_bin.join(file_name))
+    Ok(local_bin.join(EXECUTABLE_NAME))
 }
 
 ////////////////////////////////////////////////////////////////////////////////

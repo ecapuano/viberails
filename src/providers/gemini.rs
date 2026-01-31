@@ -4,6 +4,7 @@ use anyhow::{Context, Result, anyhow};
 use log::{info, warn};
 use serde_json::{Value, json};
 
+use crate::common::{EXECUTABLE_NAME, PROJECT_NAME};
 use crate::providers::discovery::{DiscoveryResult, ProviderDiscovery, ProviderFactory};
 use crate::providers::{HookEntry, LLmProviderTrait};
 
@@ -152,7 +153,7 @@ impl Gemini {
         let our_hook = json!({
             "type": "command",
             "command": &self.command_line,
-            "name": "viberails"
+            "name": PROJECT_NAME
         });
 
         if let Some(entry) = wildcard_entry {
@@ -230,9 +231,16 @@ impl Gemini {
             return;
         };
 
-        // Remove our hook
+        // Remove our hook by matching executables ending with EXECUTABLE_NAME
         let original_len = hooks_arr.len();
-        hooks_arr.retain(|h| h.get("command").and_then(|c| c.as_str()) != Some(&self.command_line));
+        hooks_arr.retain(|h| {
+            let Some(cmd) = h.get("command").and_then(|c| c.as_str()) else {
+                return true;
+            };
+            !cmd.split_whitespace()
+                .next()
+                .is_some_and(|exe| exe.ends_with(EXECUTABLE_NAME))
+        });
 
         if hooks_arr.len() == original_len {
             warn!("{hook_type} hook not found in {}", self.settings.display());

@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
+use crate::common::EXECUTABLE_NAME;
+
 use super::LLmProviderTrait;
 
 /// Result of checking whether a provider tool is available on the system.
@@ -56,16 +58,16 @@ pub trait ProviderFactory: ProviderDiscovery {
         }
 
         // Try to create provider and check for our hooks
-        if let Ok(provider) = self.create() {
-            if let Ok(hooks) = provider.list() {
-                // Check if any hook command contains our binary name
-                // We look for the callback command pattern (e.g., "viberails claude-callback")
-                result.hooks_installed = hooks.iter().any(|h| {
-                    h.command.contains("-callback") && h.command.contains("viberails")
-                        || h.command.ends_with("/viberails")
-                        || h.command.contains("/viberails ")
-                });
-            }
+        if let Ok(provider) = self.create()
+            && let Ok(hooks) = provider.list()
+        {
+            // Check if any hook command contains our binary name
+            // We look for the callback command pattern (e.g., "__PROJECT_NAME__ claude-callback")
+            result.hooks_installed = hooks.iter().any(|h| {
+                h.command.contains("-callback") && h.command.contains(EXECUTABLE_NAME)
+                    || h.command.ends_with(&format!("/{EXECUTABLE_NAME}"))
+                    || h.command.contains(&format!("/{EXECUTABLE_NAME} "))
+            });
         }
 
         result

@@ -2,10 +2,19 @@
 
 use serde_json::json;
 
+use crate::common::EXECUTABLE_NAME;
 use crate::providers::cursor::Cursor;
 
-fn make_cursor(program: &str) -> Cursor {
+fn make_cursor<P: AsRef<std::path::Path>>(program: P) -> Cursor {
     Cursor::with_custom_path(program).unwrap()
+}
+
+fn test_exe_path() -> String {
+    format!("/usr/bin/{EXECUTABLE_NAME}")
+}
+
+fn test_command() -> String {
+    format!("/usr/bin/{EXECUTABLE_NAME} cursor-callback")
 }
 
 #[test]
@@ -111,14 +120,14 @@ fn test_install_into_different_hook_types() {
 
 #[test]
 fn test_uninstall_from_removes_our_hook() {
-    let cursor = make_cursor("/usr/bin/test-program");
+    let cursor = make_cursor(test_exe_path());
     let mut json = json!({
         "version": 1,
         "hooks": {
             "preToolUse": [
                 {
                     "type": "command",
-                    "command": "/usr/bin/test-program cursor-callback",
+                    "command": test_command(),
                     "matcher": "*"
                 }
             ]
@@ -133,7 +142,7 @@ fn test_uninstall_from_removes_our_hook() {
 
 #[test]
 fn test_uninstall_from_preserves_other_hooks() {
-    let cursor = make_cursor("/usr/bin/test-program");
+    let cursor = make_cursor(test_exe_path());
     let mut json = json!({
         "version": 1,
         "hooks": {
@@ -145,7 +154,7 @@ fn test_uninstall_from_preserves_other_hooks() {
                 },
                 {
                     "type": "command",
-                    "command": "/usr/bin/test-program cursor-callback",
+                    "command": test_command(),
                     "matcher": "*"
                 }
             ]

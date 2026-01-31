@@ -2,6 +2,7 @@
 
 use serde_json::json;
 
+use crate::common::PROJECT_NAME;
 use crate::providers::opencode::OpenCode;
 
 fn make_opencode(program: &str) -> OpenCode {
@@ -17,13 +18,16 @@ fn test_install_into_empty_json() {
 
     let plugins = &json["plugins"];
     assert!(plugins.is_object());
-    let viberails = &plugins["viberails"];
-    assert_eq!(viberails["enabled"], true);
-    assert_eq!(
-        viberails["command"],
-        "/usr/bin/test-program opencode-callback"
+    let entry = &plugins[PROJECT_NAME];
+    assert_eq!(entry["enabled"], true);
+    assert_eq!(entry["command"], "/usr/bin/test-program opencode-callback");
+    // Note: description comes from production code which capitalizes the name
+    assert!(
+        entry["description"]
+            .as_str()
+            .unwrap()
+            .contains("security hooks")
     );
-    assert_eq!(viberails["description"], "Viberails security hooks");
 }
 
 #[test]
@@ -47,7 +51,7 @@ fn test_install_into_existing_plugins() {
             .unwrap()
     );
     // Our plugin should be added
-    assert!(json["plugins"]["viberails"]["enabled"].as_bool().unwrap());
+    assert!(json["plugins"][PROJECT_NAME]["enabled"].as_bool().unwrap());
 }
 
 #[test]
@@ -55,7 +59,7 @@ fn test_install_into_skips_if_already_installed() {
     let opencode = make_opencode("/usr/bin/test-program");
     let mut json = json!({
         "plugins": {
-            "viberails": {
+            PROJECT_NAME: {
                 "enabled": true,
                 "command": "/usr/bin/test-program opencode-callback"
             }
@@ -64,8 +68,8 @@ fn test_install_into_skips_if_already_installed() {
 
     opencode.install_into("plugins", &mut json).unwrap();
 
-    // Should still have only one viberails entry
-    assert!(json["plugins"]["viberails"].is_object());
+    // Should still have only one entry
+    assert!(json["plugins"][PROJECT_NAME].is_object());
 }
 
 #[test]
@@ -73,7 +77,7 @@ fn test_install_into_updates_different_command() {
     let opencode = make_opencode("/usr/bin/test-program");
     let mut json = json!({
         "plugins": {
-            "viberails": {
+            PROJECT_NAME: {
                 "enabled": false,
                 "command": "/old/path opencode-callback"
             }
@@ -84,10 +88,10 @@ fn test_install_into_updates_different_command() {
 
     // Should be updated with new command
     assert_eq!(
-        json["plugins"]["viberails"]["command"],
+        json["plugins"][PROJECT_NAME]["command"],
         "/usr/bin/test-program opencode-callback"
     );
-    assert!(json["plugins"]["viberails"]["enabled"].as_bool().unwrap());
+    assert!(json["plugins"][PROJECT_NAME]["enabled"].as_bool().unwrap());
 }
 
 #[test]
@@ -105,11 +109,11 @@ fn test_install_into_preserves_other_config() {
 }
 
 #[test]
-fn test_uninstall_from_removes_viberails() {
+fn test_uninstall_from_removes_entry() {
     let opencode = make_opencode("/usr/bin/test-program");
     let mut json = json!({
         "plugins": {
-            "viberails": {
+            PROJECT_NAME: {
                 "enabled": true,
                 "command": "/usr/bin/test-program opencode-callback"
             },
@@ -122,7 +126,7 @@ fn test_uninstall_from_removes_viberails() {
 
     opencode.uninstall_from("plugins", &mut json);
 
-    assert!(json["plugins"].get("viberails").is_none());
+    assert!(json["plugins"].get(PROJECT_NAME).is_none());
     // Other plugin should be preserved
     assert!(json["plugins"]["other-plugin"].is_object());
 }
@@ -137,7 +141,7 @@ fn test_uninstall_from_no_plugins() {
 }
 
 #[test]
-fn test_uninstall_from_no_viberails() {
+fn test_uninstall_from_no_entry() {
     let opencode = make_opencode("/usr/bin/test-program");
     let mut json = json!({
         "plugins": {

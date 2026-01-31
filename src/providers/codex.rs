@@ -4,6 +4,7 @@ use anyhow::{Context, Result, anyhow};
 use log::{info, warn};
 use toml::{Table, Value};
 
+use crate::common::EXECUTABLE_NAME;
 use crate::providers::discovery::{DiscoveryResult, ProviderDiscovery, ProviderFactory};
 use crate::providers::{HookEntry, LLmProviderTrait};
 
@@ -147,9 +148,14 @@ impl Codex {
     pub(crate) fn uninstall_from(&self, _hook_type: &str, toml: &mut Table) {
         let notify_entry = toml.get("notify");
 
+        // Check if notify entry contains our executable by matching EXECUTABLE_NAME
         if let Some(existing) = notify_entry
             && let Some(arr) = existing.as_array()
-            && arr.first().and_then(|v| v.as_str()) == Some(&self.command_line)
+            && let Some(cmd) = arr.first().and_then(|v| v.as_str())
+            && cmd
+                .split_whitespace()
+                .next()
+                .is_some_and(|exe| exe.ends_with(EXECUTABLE_NAME))
         {
             toml.remove("notify");
             return;

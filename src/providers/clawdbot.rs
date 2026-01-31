@@ -4,6 +4,7 @@ use anyhow::{Context, Result, anyhow};
 use log::{info, warn};
 use serde_json::{Value, json};
 
+use crate::common::PROJECT_NAME;
 use crate::providers::discovery::{DiscoveryResult, ProviderDiscovery, ProviderFactory};
 use crate::providers::{HookEntry, LLmProviderTrait};
 
@@ -177,12 +178,12 @@ impl Clawdbot {
                 )
             })?;
 
-        // Check if viberails is already registered
-        if let Some(existing) = entries_obj.get("viberails")
+        // Check if hook is already registered
+        if let Some(existing) = entries_obj.get(PROJECT_NAME)
             && existing.get("command").and_then(|c| c.as_str()) == Some(&self.command_line)
         {
             warn!(
-                "viberails hook already exists in {}",
+                "{PROJECT_NAME} hook already exists in {}",
                 self.config_file.display()
             );
             return Ok(());
@@ -190,7 +191,7 @@ impl Clawdbot {
 
         // Add our hook entry
         entries_obj.insert(
-            "viberails".to_string(),
+            PROJECT_NAME.to_string(),
             json!({
                 "enabled": true,
                 "command": &self.command_line
@@ -218,8 +219,11 @@ impl Clawdbot {
             return;
         };
 
-        if entries_obj.remove("viberails").is_none() {
-            warn!("viberails hook not found in {}", self.config_file.display());
+        if entries_obj.remove(PROJECT_NAME).is_none() {
+            warn!(
+                "{PROJECT_NAME} hook not found in {}",
+                self.config_file.display()
+            );
         }
     }
 }

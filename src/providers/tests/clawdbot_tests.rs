@@ -2,6 +2,7 @@
 
 use serde_json::json;
 
+use crate::common::PROJECT_NAME;
 use crate::providers::clawdbot::Clawdbot;
 
 fn make_clawdbot(program: &str) -> Clawdbot {
@@ -21,12 +22,9 @@ fn test_install_into_empty_json() {
     assert!(internal["enabled"].as_bool().unwrap());
     let entries = &internal["entries"];
     assert!(entries.is_object());
-    let viberails = &entries["viberails"];
-    assert!(viberails["enabled"].as_bool().unwrap());
-    assert_eq!(
-        viberails["command"],
-        "/usr/bin/test-program clawdbot-callback"
-    );
+    let entry = &entries[PROJECT_NAME];
+    assert!(entry["enabled"].as_bool().unwrap());
+    assert_eq!(entry["command"], "/usr/bin/test-program clawdbot-callback");
 }
 
 #[test]
@@ -55,7 +53,7 @@ fn test_install_into_existing_hooks() {
     );
     // Our hook should be added
     assert!(
-        json["hooks"]["internal"]["entries"]["viberails"]["enabled"]
+        json["hooks"]["internal"]["entries"][PROJECT_NAME]["enabled"]
             .as_bool()
             .unwrap()
     );
@@ -69,7 +67,7 @@ fn test_install_into_skips_if_already_installed() {
             "internal": {
                 "enabled": true,
                 "entries": {
-                    "viberails": {
+                    PROJECT_NAME: {
                         "enabled": true,
                         "command": "/usr/bin/test-program clawdbot-callback"
                     }
@@ -81,7 +79,7 @@ fn test_install_into_skips_if_already_installed() {
     clawdbot.install_into("hooks", &mut json).unwrap();
 
     // Should still have the same entry
-    assert!(json["hooks"]["internal"]["entries"]["viberails"].is_object());
+    assert!(json["hooks"]["internal"]["entries"][PROJECT_NAME].is_object());
 }
 
 #[test]
@@ -92,7 +90,7 @@ fn test_install_into_updates_different_command() {
             "internal": {
                 "enabled": false,
                 "entries": {
-                    "viberails": {
+                    PROJECT_NAME: {
                         "enabled": false,
                         "command": "/old/path clawdbot-callback"
                     }
@@ -105,11 +103,11 @@ fn test_install_into_updates_different_command() {
 
     // Should be updated with new command
     assert_eq!(
-        json["hooks"]["internal"]["entries"]["viberails"]["command"],
+        json["hooks"]["internal"]["entries"][PROJECT_NAME]["command"],
         "/usr/bin/test-program clawdbot-callback"
     );
     assert!(
-        json["hooks"]["internal"]["entries"]["viberails"]["enabled"]
+        json["hooks"]["internal"]["entries"][PROJECT_NAME]["enabled"]
             .as_bool()
             .unwrap()
     );
@@ -132,14 +130,14 @@ fn test_install_into_preserves_other_config() {
 }
 
 #[test]
-fn test_uninstall_from_removes_viberails() {
+fn test_uninstall_from_removes_entry() {
     let clawdbot = make_clawdbot("/usr/bin/test-program");
     let mut json = json!({
         "hooks": {
             "internal": {
                 "enabled": true,
                 "entries": {
-                    "viberails": {
+                    PROJECT_NAME: {
                         "enabled": true,
                         "command": "/usr/bin/test-program clawdbot-callback"
                     },
@@ -155,7 +153,7 @@ fn test_uninstall_from_removes_viberails() {
 
     assert!(
         json["hooks"]["internal"]["entries"]
-            .get("viberails")
+            .get(PROJECT_NAME)
             .is_none()
     );
     // Other hook should be preserved
@@ -187,7 +185,7 @@ fn test_uninstall_from_no_entries() {
 }
 
 #[test]
-fn test_uninstall_from_no_viberails() {
+fn test_uninstall_from_no_entry() {
     let clawdbot = make_clawdbot("/usr/bin/test-program");
     let mut json = json!({
         "hooks": {

@@ -41,7 +41,7 @@ do_install() {
         exit 1
     fi
 
-    artifact_name="viberails-${os}-${arch}"
+    artifact_name="${BINARY_NAME}-${os}-${arch}"
     download_url="${BASE_URL}/${artifact_name}"
 
     echo "Detected: ${os} ${arch}"
@@ -89,7 +89,7 @@ do_join_team() {
         exit 1
     fi
 
-    artifact_name="viberails-${os}-${arch}"
+    artifact_name="${BINARY_NAME}-${os}-${arch}"
     download_url="${BASE_URL}/${artifact_name}"
 
     echo "Detected: ${os} ${arch}"
