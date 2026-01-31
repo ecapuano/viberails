@@ -136,7 +136,7 @@ where
     Ok(resp.jwt)
 }
 
-/// Create a LimaCharlie user profile via Firebase signUp Cloud Function.
+/// Create a `LimaCharlie` user profile via Firebase signUp Cloud Function.
 ///
 /// This function calls the same signUp Cloud Function that the web frontend uses
 /// to create a user profile in Firebase Realtime Database. This is required before
@@ -158,7 +158,7 @@ where
     E: AsRef<str>,
 {
     let email = email.as_ref();
-    info!("Creating LimaCharlie user profile for {}", email);
+    info!("Creating LimaCharlie user profile for {email}");
 
     let is_internal = email.ends_with("@limacharlie.io") || email.ends_with("@refractionpoint.com");
 

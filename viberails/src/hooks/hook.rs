@@ -43,7 +43,7 @@ impl From<HookDecision> for HookAnswer {
                     reason: Some(reason),
                 }
             }
-            _ => Self {
+            HookDecision::Approve => Self {
                 decision: value,
                 reason: None,
             },
@@ -166,7 +166,7 @@ impl<'a> Hook<'a> {
             if let Err(e) = self.cloud.notify(value) {
                 error!("Unable to notify cloud ({e})");
             }
-        };
+        }
 
         let duration = start.elapsed().as_millis();
 

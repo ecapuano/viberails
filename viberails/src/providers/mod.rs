@@ -8,7 +8,7 @@ use serde::Serialize;
 #[cfg(test)]
 mod claude_tests;
 
-#[derive(Clone, clap::ValueEnum, Display, Serialize)]
+#[derive(Clone, Copy, clap::ValueEnum, Display, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Providers {
     ClaudeCode,

@@ -55,7 +55,7 @@ fn install_hooks(program: &Path, provider: Providers) -> Vec<InstallResult> {
             let ret = claude.install(h);
 
             let result = InstallResult {
-                provider: provider.clone(),
+                provider,
                 hooktype: h,
                 result: ret,
             };

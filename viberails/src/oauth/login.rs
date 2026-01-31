@@ -15,7 +15,7 @@ use crate::{
     oauth::{LoginArgs, authorize},
 };
 
-const ORG_CREATE_TIMEOUT: Duration = Duration::from_mins(2);
+const ORG_CREATE_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[cfg(debug_assertions)]
 const ORG_DEFAULT_LOCATION: &str = "exp";
@@ -151,7 +151,7 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     //
     if let Some(ref email) = login.email {
         println!("Setting up user profile...");
-        info!("Creating user profile for {}", email);
+        info!("Creating user profile for {email}");
         signup_user(&login.id_token, email)
             .context("Failed to create user profile")?;
     } else {
