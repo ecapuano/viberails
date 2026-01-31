@@ -66,6 +66,9 @@ do_install() {
 
     echo "Successfully downloaded ${BINARY_NAME}"
 
+    # Display version information
+    "$tmp_file" -V
+
     # Run init-team subcommand
     "$tmp_file" init-team
 
@@ -114,6 +117,9 @@ do_join_team() {
 
     echo "Successfully downloaded ${BINARY_NAME}"
 
+    # Display version information
+    "$tmp_file" -V
+
     # Run join-team subcommand with URL
     "$tmp_file" join "$url"
 
@@ -125,8 +131,50 @@ do_join_team() {
 }
 
 do_uninstall() {
-    echo "Uninstall is not supported (binary is not permanently installed)"
-    exit 1
+    local os arch artifact_name download_url
+
+    os="$(detect_os)"
+    arch="$(detect_arch)"
+
+    # Windows arm64 is not supported
+    if [ "$os" = "windows" ] && [ "$arch" = "arm64" ]; then
+        echo "Error: Windows ARM64 is not supported" >&2
+        exit 1
+    fi
+
+    artifact_name="${BINARY_NAME}-${os}-${arch}"
+    download_url="${BASE_URL}/${artifact_name}"
+
+    echo "Detected: ${os} ${arch}"
+    echo "Downloading ${artifact_name}..."
+
+    # Create temp directory
+    tmp_dir="$(mktemp -d)"
+    tmp_file="${tmp_dir}/${artifact_name}"
+
+    # Download binary
+    if command -v curl &>/dev/null; then
+        curl -fsSL "$download_url" -o "$tmp_file"
+    elif command -v wget &>/dev/null; then
+        wget -q "$download_url" -O "$tmp_file"
+    else
+        echo "Error: curl or wget is required" >&2
+        exit 1
+    fi
+
+    # Make executable
+    chmod +x "$tmp_file"
+
+    echo "Successfully downloaded ${BINARY_NAME}"
+
+    # Display version information
+    "$tmp_file" -V
+
+    # Run uninstall subcommand
+    "$tmp_file" uninstall
+
+    # Clean up temp directory
+    rm -rf "$tmp_dir"
 }
 
 main() {
