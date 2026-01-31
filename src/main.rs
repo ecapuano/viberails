@@ -12,7 +12,7 @@ use clap::{Parser, Subcommand};
 
 use crate::{
     common::PROJECT_NAME,
-    config::{ConfigureArgs, JoinTeamArgs, configure, join_team, show_configuration},
+    config::{JoinTeamArgs, join_team, show_configuration},
     hooks::{hook, install, list, uninstall},
     logging::Logging,
     oauth::{LoginArgs, login::login},
@@ -39,10 +39,6 @@ enum Command {
     /// Join an existing team using a team URL
     #[command(visible_alias = "join")]
     JoinTeam(JoinTeamArgs),
-
-    /// Configure
-    #[command(visible_alias = "config")]
-    Configure(Box<ConfigureArgs>),
 
     /// Show Config
     #[command(visible_alias = "show-config")]
@@ -104,7 +100,6 @@ fn main() -> Result<()> {
             list();
             Ok(())
         }
-        Command::Configure(a) => configure(&a),
         Command::ShowConfiguration => show_configuration(),
         Command::InitTeam(args) => login(&args),
         Command::JoinTeam(args) => join_team(&args),
