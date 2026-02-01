@@ -29,9 +29,11 @@ pub enum CloudVerdict {
 struct CloudResponse {
     success: bool,
     reason: Option<String>,
-    //error: Option<String>,
-    //rejected: Option<String>,
-    //rule: Option<String>,
+    #[allow(dead_code)]
+    error: Option<String>,
+    #[allow(dead_code)]
+    rejected: Option<bool>,
+    rule: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -260,8 +262,10 @@ impl<'a> CloudQuery<'a> {
         } else {
             let msg = if let Some(reason) = data.reason {
                 format!("deny reason: {reason}")
+            } else if let Some(rule) = data.rule {
+                format!("blocked by rule: {rule}")
             } else {
-                String::new()
+                "denied by policy".to_string()
             };
 
             CloudVerdict::Deny(msg)
