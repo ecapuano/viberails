@@ -493,7 +493,7 @@ impl DRRule<'_> {
         let data_json =
             serde_json::to_string(&data).context("Failed to serialize D&R rule data")?;
         let body = format!(
-            "data={}&usr_mtd={}",
+            "data={}&usr_mtd={}&tags=viberails",
             urlencoding::encode(&data_json),
             urlencoding::encode(&usr_mtd_json)
         );
