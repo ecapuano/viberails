@@ -3,7 +3,8 @@ use std::{env, fs, path::PathBuf};
 use anyhow::{Context, Result, anyhow};
 
 pub const PROJECT_NAME: &str = env!("CARGO_PKG_NAME");
-pub const PROJECT_VERSION: &str = concat!(env!("GIT_VERSION"), "-", env!("GIT_HASH"));
+pub const PROJECT_VERSION: &str = env!("GIT_VERSION");
+pub const PROJECT_VERSION_HASH: &str = env!("GIT_HASH");
 
 #[cfg(windows)]
 pub const EXECUTABLE_NAME: &str = concat!(env!("CARGO_PKG_NAME"), ".exe");
