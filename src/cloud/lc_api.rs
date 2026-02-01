@@ -78,6 +78,12 @@ struct WebhookAdapterData<'a> {
 struct WebhookConfig<'a> {
     secret: &'a str,
     client_options: ClientOptions<'a>,
+    dr_rules: DrRules,
+}
+
+#[derive(Serialize)]
+struct DrRules {
+    enabled: bool,
 }
 
 #[derive(Serialize)]
@@ -350,6 +356,7 @@ impl WebhookAdapter<'_> {
                         sensor_hostname_path: "{{.meta_data.hostname}} - {{.meta_data.source}}",
                     },
                 },
+                dr_rules: DrRules { enabled: true },
             },
         };
 
