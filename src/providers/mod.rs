@@ -50,35 +50,33 @@ pub enum Providers {
     Clawdbot,
 }
 
-#[derive(Serialize, Display)]
+#[derive(Serialize, Display, Clone)]
 #[allow(dead_code)]
 #[serde(rename_all = "lowercase")]
 pub enum HookDecision {
-    Block(String),
+    Block,
     Approve,
 }
 
 #[derive(Serialize)]
-struct HookAnswer {
+pub(crate) struct HookAnswer {
     decision: HookDecision,
     #[serde(skip_serializing_if = "Option::is_none")]
     reason: Option<String>,
 }
 
-impl From<HookDecision> for HookAnswer {
-    fn from(value: HookDecision) -> Self {
-        match value {
-            HookDecision::Block(ref r) => {
-                let reason = r.clone();
-                Self {
-                    decision: value,
-                    reason: Some(reason),
-                }
-            }
-            HookDecision::Approve => Self {
-                decision: value,
-                reason: None,
-            },
+impl HookAnswer {
+    pub(crate) fn approve() -> Self {
+        Self {
+            decision: HookDecision::Approve,
+            reason: None,
+        }
+    }
+
+    pub(crate) fn block(reason: String) -> Self {
+        Self {
+            decision: HookDecision::Block,
+            reason: Some(reason),
         }
     }
 }
@@ -96,9 +94,7 @@ pub trait LLmProviderTrait {
     fn uninstall(&self, hook_type: &str) -> Result<()>;
     fn list(&self) -> Result<Vec<HookEntry>>;
 
-    fn write_decision(&self, writer: &mut BufWriter<Stdout>, decision: HookDecision) -> Result<()> {
-        let answer: HookAnswer = decision.into();
-
+    fn write_answer(&self, writer: &mut BufWriter<Stdout>, answer: HookAnswer) -> Result<()> {
         let resp_string =
             serde_json::to_string(&answer).context("Failed to serialize hook response")?;
 
@@ -112,24 +108,24 @@ pub trait LLmProviderTrait {
         Ok(())
     }
 
-    fn authorize_tool(&self, cloud: &CloudQuery, config: &Config, value: Value) -> HookDecision {
+    fn authorize_tool(&self, cloud: &CloudQuery, config: &Config, value: Value) -> HookAnswer {
         //
         // Do we fail-open?
         //
         match cloud.authorize(value) {
-            Ok(CloudVerdict::Allow) => HookDecision::Approve,
+            Ok(CloudVerdict::Allow) => HookAnswer::approve(),
             Ok(CloudVerdict::Deny(r)) => {
                 warn!("Deny reason: {r}");
-                HookDecision::Block(r)
+                HookAnswer::block(r)
             }
             Err(e) => {
                 error!("cloud failed ({e})");
 
                 if config.user.fail_open {
-                    HookDecision::Approve
+                    HookAnswer::approve()
                 } else {
                     let msg = format!("{PROJECT_NAME} cloud failure ({e})");
-                    HookDecision::Block(msg)
+                    HookAnswer::block(msg)
                 }
             }
         }
@@ -178,15 +174,15 @@ pub trait LLmProviderTrait {
             //
             // D&R Path - only call cloud if audit_tool_use is enabled
             //
-            let decision = if config.user.audit_tool_use {
+            let answer = if config.user.audit_tool_use {
                 self.authorize_tool(cloud, config, value)
             } else {
                 info!("audit_tool_use disabled, approving locally");
-                HookDecision::Approve
+                HookAnswer::approve()
             };
 
-            info!("Decision={decision}");
-            self.write_decision(&mut writer, decision)?;
+            info!("Decision={}", answer.decision);
+            self.write_answer(&mut writer, answer)?;
         } else {
             //
             // Notify path - only call cloud if audit_prompts is enabled
@@ -201,7 +197,7 @@ pub trait LLmProviderTrait {
 
             // Always write an approve response for non-tool-use events
             // The AI tool may be waiting for a response on stdout
-            self.write_decision(&mut writer, HookDecision::Approve)?;
+            self.write_answer(&mut writer, HookAnswer::approve())?;
         }
 
         let duration = start.elapsed().as_millis();
