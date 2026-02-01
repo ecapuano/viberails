@@ -192,6 +192,7 @@ pub fn poll_upgrade() -> Result<()> {
         //
         // time to try to upgrade
         //
+        spawn_upgrade()?;
     }
 
     Ok(())
