@@ -27,6 +27,13 @@ const CREATE_AUTH_URI: &str = "https://identitytoolkit.googleapis.com/v1/account
 const SIGN_IN_WITH_IDP: &str = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp";
 const MFA_FINALIZE: &str = "https://identitytoolkit.googleapis.com/v2/accounts/mfaSignIn:finalize";
 
+/// GitHub Device Flow endpoints
+const GITHUB_DEVICE_CODE: &str = "https://github.com/login/device/code";
+const GITHUB_ACCESS_TOKEN: &str = "https://github.com/login/oauth/access_token";
+
+/// GitHub Device Flow polling interval (seconds)
+const GITHUB_POLL_INTERVAL: u64 = 5;
+
 /// OAuth callback timeout in seconds
 const OAUTH_CALLBACK_TIMEOUT: u64 = 300;
 
@@ -155,6 +162,38 @@ struct MfaFinalizeResponse {
     expires_in: Option<String>,
 }
 
+/// GitHub Device Flow: Response with device and user codes
+#[derive(Deserialize)]
+struct GitHubDeviceCodeResponse {
+    device_code: String,
+    user_code: String,
+    verification_uri: String,
+    expires_in: u64,
+    interval: u64,
+}
+
+/// GitHub Device Flow: Access token response
+#[derive(Deserialize)]
+struct GitHubAccessTokenResponse {
+    access_token: Option<String>,
+    error: Option<String>,
+    error_description: Option<String>,
+}
+
+/// Firebase signInWithIdp request for direct OAuth credential exchange.
+///
+/// This is separate from `SignInWithIdpRequest` because credential-based auth
+/// (exchanging an access token directly) doesn't require `session_id`, which
+/// is only needed for the callback-based flow.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SignInWithCredentialRequest {
+    post_body: String,
+    request_uri: String,
+    return_secure_token: bool,
+    return_idp_credential: bool,
+}
+
 /// Callback result from the OAuth server
 enum CallbackResult {
     /// Authentication completed successfully (tokens ready)
@@ -189,11 +228,12 @@ pub struct LoginArgs {
 /// Perform OAuth authorization flow.
 ///
 /// This function:
-/// 1. Starts a local HTTP server to receive the OAuth callback
-/// 2. Requests an auth URI from Firebase
-/// 3. Opens the browser (or prints the URL) for user authentication
-/// 4. Waits for the callback with the authorization code
-/// 5. Exchanges the code for Firebase tokens
+/// 1. For GitHub: Uses Device Flow (no callback server needed)
+/// 2. For others: Starts a local HTTP server to receive the OAuth callback
+/// 3. Requests an auth URI from Firebase (or device code from GitHub)
+/// 4. Opens the browser (or prints the URL) for user authentication
+/// 5. Waits for the callback/polling completion
+/// 6. Exchanges the code/token for Firebase tokens
 ///
 /// # Arguments
 /// * `provider` - The OAuth provider to use for authentication
@@ -203,6 +243,11 @@ pub struct LoginArgs {
 /// * `Ok(OAuthTokens)` - The OAuth tokens on success
 /// * `Err` - An error if authorization fails
 pub fn authorize(provider: OAuthProvider, args: &LoginArgs) -> Result<OAuthTokens> {
+    // GitHub uses Device Flow (no callback server needed)
+    if provider == OAuthProvider::GitHub {
+        return authorize_github_device_flow(args);
+    }
+
     // Find a free port and start the callback server
     let port = find_free_port()?;
     let redirect_uri = format!("http://localhost:{port}/callback");
@@ -248,6 +293,321 @@ pub fn authorize(provider: OAuthProvider, args: &LoginArgs) -> Result<OAuthToken
         CallbackResult::Error(error) => Err(anyhow!("Authentication failed: {error}")),
         CallbackResult::Timeout => Err(anyhow!("Authentication timeout")),
     }
+}
+
+/// Perform GitHub OAuth using Device Flow.
+///
+/// This flow is ideal for CLI tools as it doesn't require a callback server:
+/// 1. Request a device code from GitHub
+/// 2. User visits github.com/login/device and enters the code
+/// 3. Poll GitHub until authorization completes
+/// 4. Exchange the GitHub access token for Firebase tokens
+fn authorize_github_device_flow(args: &LoginArgs) -> Result<OAuthTokens> {
+    let client_id = get_embedded_default("github_client_id");
+
+    println!("Using GitHub Device Flow authentication...");
+
+    // Step 1: Request device and user codes
+    let device_response = request_github_device_code(&client_id)?;
+
+    // Step 2: Show user the code and URL
+    println!();
+    println!("  Visit: {}", device_response.verification_uri);
+    println!("  Enter code: {}", device_response.user_code);
+    println!();
+
+    // Open browser if requested
+    if !args.no_browser && open_browser(&device_response.verification_uri).is_err() {
+        println!("Could not open browser automatically.");
+    }
+
+    println!("Waiting for authorization (expires in {} seconds)...", device_response.expires_in);
+
+    // Step 3: Poll for access token
+    let access_token = poll_github_access_token(
+        &client_id,
+        &device_response.device_code,
+        device_response.interval,
+        device_response.expires_in,
+    )?;
+
+    println!("GitHub authorization successful, exchanging for Firebase token...");
+
+    // Step 4: Exchange GitHub access token for Firebase tokens
+    exchange_github_token_for_firebase(&access_token)
+}
+
+/// Request device and user codes from GitHub
+fn request_github_device_code(client_id: &str) -> Result<GitHubDeviceCodeResponse> {
+    let body = format!(
+        "client_id={}&scope={}",
+        urlencoding::encode(client_id),
+        urlencoding::encode("user:email")
+    );
+
+    let response = minreq::post(GITHUB_DEVICE_CODE)
+        .with_header("Accept", "application/json")
+        .with_body(body)
+        .with_header("Content-Type", "application/x-www-form-urlencoded")
+        .with_timeout(10)
+        .send()
+        .context("Failed to request GitHub device code")?;
+
+    if response.status_code != 200 {
+        let body = response.as_str().unwrap_or("(non-utf8 response)");
+        error!("GitHub device code request failed: HTTP {} - {}", response.status_code, body);
+        return Err(anyhow!(
+            "Failed to request GitHub device code: HTTP {}",
+            response.status_code
+        ));
+    }
+
+    let data: GitHubDeviceCodeResponse = serde_json::from_str(
+        response.as_str().context("Invalid UTF-8 in GitHub response")?,
+    )
+    .context("Failed to parse GitHub device code response")?;
+
+    info!("Got device code from GitHub, user code: {}", data.user_code);
+
+    Ok(data)
+}
+
+/// Poll GitHub for access token until user authorizes or timeout
+fn poll_github_access_token(
+    client_id: &str,
+    device_code: &str,
+    initial_interval: u64,
+    expires_in: u64,
+) -> Result<String> {
+    let start = std::time::Instant::now();
+    let timeout = Duration::from_secs(expires_in);
+    let mut interval = initial_interval.max(GITHUB_POLL_INTERVAL);
+
+    loop {
+        // Check if we've exceeded the timeout
+        if start.elapsed() > timeout {
+            return Err(anyhow!("GitHub authorization timed out. Please try again."));
+        }
+
+        // Wait before polling
+        thread::sleep(Duration::from_secs(interval));
+
+        let body = format!(
+            "client_id={}&device_code={}&grant_type={}",
+            urlencoding::encode(client_id),
+            urlencoding::encode(device_code),
+            urlencoding::encode("urn:ietf:params:oauth:grant-type:device_code")
+        );
+
+        let response = minreq::post(GITHUB_ACCESS_TOKEN)
+            .with_header("Accept", "application/json")
+            .with_body(body)
+            .with_header("Content-Type", "application/x-www-form-urlencoded")
+            .with_timeout(10)
+            .send()
+            .context("Failed to poll GitHub for access token")?;
+
+        let body = response.as_str().context("Invalid UTF-8 in GitHub response")?;
+        let data: GitHubAccessTokenResponse =
+            serde_json::from_str(body).context("Failed to parse GitHub access token response")?;
+
+        // Check for access token (success)
+        if let Some(token) = data.access_token {
+            return Ok(token);
+        }
+
+        // Handle errors
+        if let Some(error) = data.error {
+            match error.as_str() {
+                // User hasn't authorized yet, continue polling
+                "authorization_pending" => {}
+                "slow_down" => {
+                    // Rate limited, increase interval by 5 seconds
+                    interval = interval.saturating_add(5);
+                    warn!("GitHub rate limit hit, increasing poll interval to {interval}s");
+                }
+                "expired_token" => {
+                    return Err(anyhow!(
+                        "Authorization expired. Please run the command again to get a new code."
+                    ));
+                }
+                "access_denied" => {
+                    return Err(anyhow!("Authorization was denied by the user."));
+                }
+                _ => {
+                    let desc = data.error_description.unwrap_or_default();
+                    return Err(anyhow!("GitHub authorization failed: {error} - {desc}"));
+                }
+            }
+        }
+    }
+}
+
+/// Exchange GitHub access token for Firebase tokens
+fn exchange_github_token_for_firebase(github_access_token: &str) -> Result<OAuthTokens> {
+    let api_key = get_embedded_default("firebase_api_key");
+    let url = format!("{SIGN_IN_WITH_IDP}?key={api_key}");
+
+    info!("Exchanging GitHub token with Firebase signInWithIdp");
+
+    // For OAuth credential exchange, we use access_token in post_body
+    let post_body = format!(
+        "access_token={}&providerId=github.com",
+        urlencoding::encode(github_access_token)
+    );
+
+    let payload = SignInWithCredentialRequest {
+        post_body,
+        request_uri: "http://localhost".to_string(), // Required but not used for credential exchange
+        return_secure_token: true,
+        return_idp_credential: true,
+    };
+
+    let response = minreq::post(&url)
+        .with_json(&payload)?
+        .with_timeout(10)
+        .send()
+        .context("Failed to exchange GitHub token with Firebase")?;
+
+    let response_body = response.as_str().unwrap_or("(non-utf8 response)");
+
+    if response.status_code != 200 {
+        error!(
+            "Firebase signInWithIdp failed: HTTP {} - {}",
+            response.status_code, response_body
+        );
+        return Err(anyhow!(
+            "Failed to exchange GitHub token with Firebase: HTTP {}",
+            response.status_code
+        ));
+    }
+
+    // Check if MFA is required
+    if let Ok(mfa_response) = serde_json::from_str::<SignInWithIdpMfaResponse>(response_body) {
+        info!("MFA required for GitHub auth");
+
+        // Find TOTP factor
+        let factor = mfa_response
+            .mfa_info
+            .iter()
+            .find(|f| f.totp_info.is_some())
+            .ok_or_else(|| {
+                anyhow!(
+                    "MFA is required but only TOTP (authenticator app) is supported.\n\
+                     Please ensure you have an authenticator app configured."
+                )
+            })?;
+
+        let factor_name = factor
+            .display_name
+            .clone()
+            .unwrap_or_else(|| "your authenticator app".to_string());
+
+        return handle_mfa_in_cli(
+            &mfa_response.mfa_pending_credential,
+            &factor.mfa_enrollment_id,
+            &factor_name,
+            OAuthProvider::GitHub,
+            mfa_response.local_id.as_deref(),
+            mfa_response.email.as_deref(),
+        );
+    }
+
+    // Parse successful response
+    let data: SignInWithIdpResponse =
+        serde_json::from_str(response_body).context("Failed to parse Firebase signInWithIdp response")?;
+
+    // Calculate expiry timestamp
+    let expires_in: i64 = data.expires_in.parse().unwrap_or(3600);
+    #[allow(clippy::cast_possible_wrap)]
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let expires_at = now.saturating_add(expires_in);
+
+    info!("Firebase token exchange successful");
+
+    Ok(OAuthTokens {
+        id_token: data.id_token,
+        refresh_token: data.refresh_token,
+        expires_at,
+        provider: OAuthProvider::GitHub.as_firebase_id().to_string(),
+        uid: data.local_id,
+        email: data.email,
+    })
+}
+
+/// Handle MFA verification in the CLI by prompting for TOTP code.
+///
+/// Allows up to 3 attempts for entering the correct code.
+fn handle_mfa_in_cli(
+    mfa_pending_credential: &str,
+    mfa_enrollment_id: &str,
+    factor_name: &str,
+    provider: OAuthProvider,
+    local_id: Option<&str>,
+    email: Option<&str>,
+) -> Result<OAuthTokens> {
+    use inquire::Text;
+
+    const MAX_ATTEMPTS: u8 = 3;
+
+    println!("\nMulti-factor authentication required.");
+    println!("Enter the 6-digit code from {factor_name}.");
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        let prompt = if attempt == 1 {
+            "MFA Code".to_string()
+        } else {
+            format!("MFA Code (attempt {attempt}/{MAX_ATTEMPTS})")
+        };
+
+        let code = Text::new(&prompt)
+            .with_validator(|input: &str| {
+                if input.len() == 6 && input.chars().all(|c| c.is_ascii_digit()) {
+                    Ok(inquire::validator::Validation::Valid)
+                } else {
+                    Ok(inquire::validator::Validation::Invalid(
+                        "Code must be exactly 6 digits".into(),
+                    ))
+                }
+            })
+            .prompt()
+            .map_err(|e| anyhow!("MFA input cancelled: {e}"))?;
+
+        match finalize_mfa(
+            mfa_pending_credential,
+            mfa_enrollment_id,
+            &code,
+            provider,
+            local_id,
+            email,
+        ) {
+            Ok(tokens) => {
+                println!("MFA verification successful.");
+                return Ok(tokens);
+            }
+            Err(e) => {
+                // Allow retry only for invalid code errors and if we have attempts left
+                if is_retryable_mfa_error(&e) && attempt < MAX_ATTEMPTS {
+                    println!("Invalid code. Please try again.");
+                    continue;
+                }
+                return Err(e);
+            }
+        }
+    }
+
+    // This is technically unreachable since the loop always returns,
+    // but serves as a safety net if the logic changes
+    Err(anyhow!("Too many failed MFA attempts."))
+}
+
+/// Check if an MFA error is retryable (invalid/expired code)
+fn is_retryable_mfa_error(e: &anyhow::Error) -> bool {
+    let error_msg = e.to_string();
+    error_msg.contains("Invalid or expired")
 }
 
 /// Find a free port from the preferred list
@@ -750,5 +1110,171 @@ mod tests {
         assert_eq!(OAuthProvider::Google.as_firebase_id(), "google.com");
         assert_eq!(OAuthProvider::Microsoft.as_firebase_id(), "microsoft.com");
         assert_eq!(OAuthProvider::GitHub.as_firebase_id(), "github.com");
+    }
+
+    #[test]
+    fn test_oauth_provider_equality() {
+        assert_eq!(OAuthProvider::GitHub, OAuthProvider::GitHub);
+        assert_ne!(OAuthProvider::GitHub, OAuthProvider::Google);
+        assert_ne!(OAuthProvider::GitHub, OAuthProvider::Microsoft);
+    }
+
+    #[test]
+    fn test_github_device_code_response_deserialization() {
+        let json = r#"{
+            "device_code": "abc123",
+            "user_code": "ABCD-1234",
+            "verification_uri": "https://github.com/login/device",
+            "expires_in": 900,
+            "interval": 5
+        }"#;
+
+        let response: GitHubDeviceCodeResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.device_code, "abc123");
+        assert_eq!(response.user_code, "ABCD-1234");
+        assert_eq!(response.verification_uri, "https://github.com/login/device");
+        assert_eq!(response.expires_in, 900);
+        assert_eq!(response.interval, 5);
+    }
+
+    #[test]
+    fn test_github_access_token_response_success() {
+        let json = r#"{
+            "access_token": "gho_xxxxxxxxxxxx",
+            "token_type": "bearer",
+            "scope": "user:email"
+        }"#;
+
+        let response: GitHubAccessTokenResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.access_token, Some("gho_xxxxxxxxxxxx".to_string()));
+        assert!(response.error.is_none());
+    }
+
+    #[test]
+    fn test_github_access_token_response_pending() {
+        let json = r#"{
+            "error": "authorization_pending",
+            "error_description": "The authorization request is still pending."
+        }"#;
+
+        let response: GitHubAccessTokenResponse = serde_json::from_str(json).unwrap();
+        assert!(response.access_token.is_none());
+        assert_eq!(response.error, Some("authorization_pending".to_string()));
+    }
+
+    #[test]
+    fn test_github_access_token_response_slow_down() {
+        let json = r#"{
+            "error": "slow_down",
+            "error_description": "Too many requests.",
+            "interval": 10
+        }"#;
+
+        let response: GitHubAccessTokenResponse = serde_json::from_str(json).unwrap();
+        assert!(response.access_token.is_none());
+        assert_eq!(response.error, Some("slow_down".to_string()));
+    }
+
+    #[test]
+    fn test_github_access_token_response_expired() {
+        let json = r#"{
+            "error": "expired_token",
+            "error_description": "The device_code has expired."
+        }"#;
+
+        let response: GitHubAccessTokenResponse = serde_json::from_str(json).unwrap();
+        assert!(response.access_token.is_none());
+        assert_eq!(response.error, Some("expired_token".to_string()));
+    }
+
+    #[test]
+    fn test_github_access_token_response_access_denied() {
+        let json = r#"{
+            "error": "access_denied",
+            "error_description": "The user has denied your application access."
+        }"#;
+
+        let response: GitHubAccessTokenResponse = serde_json::from_str(json).unwrap();
+        assert!(response.access_token.is_none());
+        assert_eq!(response.error, Some("access_denied".to_string()));
+    }
+
+    #[test]
+    fn test_sign_in_with_credential_request_serialization() {
+        let request = SignInWithCredentialRequest {
+            post_body: "access_token=abc123&providerId=github.com".to_string(),
+            request_uri: "http://localhost".to_string(),
+            return_secure_token: true,
+            return_idp_credential: true,
+        };
+
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(json["postBody"], "access_token=abc123&providerId=github.com");
+        assert_eq!(json["requestUri"], "http://localhost");
+        assert_eq!(json["returnSecureToken"], true);
+        assert_eq!(json["returnIdpCredential"], true);
+    }
+
+    #[test]
+    fn test_mfa_response_deserialization() {
+        // This tests that we can correctly parse an MFA-required response
+        let json = r#"{
+            "mfaPendingCredential": "pending-cred-123",
+            "mfaInfo": [
+                {
+                    "mfaEnrollmentId": "enrollment-456",
+                    "displayName": "My Authenticator",
+                    "totpInfo": {}
+                }
+            ],
+            "localId": "user-789",
+            "email": "user@example.com"
+        }"#;
+
+        let response: SignInWithIdpMfaResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(response.mfa_pending_credential, "pending-cred-123");
+        assert_eq!(response.mfa_info.len(), 1);
+        assert_eq!(response.mfa_info[0].mfa_enrollment_id, "enrollment-456");
+        assert_eq!(
+            response.mfa_info[0].display_name,
+            Some("My Authenticator".to_string())
+        );
+        assert!(response.mfa_info[0].totp_info.is_some());
+        assert_eq!(response.local_id, Some("user-789".to_string()));
+        assert_eq!(response.email, Some("user@example.com".to_string()));
+    }
+
+    #[test]
+    fn test_mfa_response_not_parsed_from_success_response() {
+        // A successful response should NOT parse as MFA response
+        let json = r#"{
+            "idToken": "id-token-123",
+            "refreshToken": "refresh-token-456",
+            "expiresIn": "3600",
+            "localId": "user-789",
+            "email": "user@example.com"
+        }"#;
+
+        // This should fail to parse as MFA response (missing mfaPendingCredential)
+        let result = serde_json::from_str::<SignInWithIdpMfaResponse>(json);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_is_retryable_mfa_error_invalid_code() {
+        let error = anyhow!("Invalid or expired verification code.");
+        assert!(is_retryable_mfa_error(&error));
+    }
+
+    #[test]
+    fn test_is_retryable_mfa_error_session_expired() {
+        let error = anyhow!("MFA session expired. Please try logging in again.");
+        assert!(!is_retryable_mfa_error(&error));
+    }
+
+    #[test]
+    fn test_is_retryable_mfa_error_too_many_attempts() {
+        let error = anyhow!("Too many failed attempts. Please try logging in again.");
+        assert!(!is_retryable_mfa_error(&error));
     }
 }

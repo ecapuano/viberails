@@ -2,5 +2,6 @@
     "firebase_api_key": "AIzaSyB5VyO6qS-XlnVD3zOIuEVNBD5JFn22_1w",
     "firebase_signup_url": "https://us-central1-refractionpoint-lce.cloudfunctions.net/signUp",
     "join_team_command": "curl -fsSL https://get.viberails.io/install.sh | bash -s -- join-team",
-    "upgrade_url": "https://get.viberails.io"
+    "upgrade_url": "https://get.viberails.io",
+    "github_client_id": "ff389f0a143431711858"
 }
