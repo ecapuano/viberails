@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     env, fs,
     io::{Read, Write},
     path::Path,
@@ -18,7 +19,7 @@ use tiny_http::StatusCode;
 struct ReleaseInfo {
     version: String,
     #[serde(default)]
-    checksums: std::collections::HashMap<String, String>,
+    checksums: HashMap<String, String>,
 }
 
 use crate::{
