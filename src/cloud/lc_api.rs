@@ -54,6 +54,17 @@ struct OrgUrlsResponse {
 }
 
 #[derive(Debug, Deserialize)]
+struct OrgInfoResponse {
+    org: OrgInfo,
+}
+
+/// Organization information returned from the API
+#[derive(Debug, Deserialize)]
+pub struct OrgInfo {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct OrgUrls {
     pub hooks: Option<String>,
 }
@@ -262,6 +273,45 @@ where
         .context("Unable to deserialize org creation response")?;
 
     Ok(resp.data.oid)
+}
+
+/// Get information about an existing organization.
+///
+/// # Arguments
+/// * `token` - JWT token for authentication
+/// * `oid` - Organization ID
+///
+/// # Returns
+/// * `Ok(OrgInfo)` - Organization information including name
+/// * `Err` - If the request fails or user doesn't have access
+pub fn get_org_info<T, O>(token: T, oid: O) -> Result<OrgInfo>
+where
+    T: AsRef<str>,
+    O: AsRef<str>,
+{
+    let url = format!("{LC_API_URL}/orgs/{}", oid.as_ref());
+    let bearer = format!("Bearer {}", token.as_ref());
+
+    let res = minreq::get(&url)
+        .with_timeout(REQUEST_TIMEOUT_SECS)
+        .with_header("Authorization", bearer)
+        .send()
+        .with_context(|| format!("Failed to get org info from {url}"))?;
+
+    if res.status_code >= 400 {
+        let error_body = res.as_str().unwrap_or("Unknown error");
+        anyhow::bail!(
+            "Get org info failed with status {}: {}",
+            res.status_code,
+            error_body
+        );
+    }
+
+    let resp: OrgInfoResponse = res
+        .json()
+        .context("Unable to deserialize org info response")?;
+
+    Ok(resp.org)
 }
 
 pub fn get_org_urls<O>(oid: O) -> Result<OrgUrls>

@@ -2,19 +2,25 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use colored::Colorize;
-use inquire::Text;
+use inquire::{Select, Text};
 use log::info;
 
 use crate::{
     cloud::lc_api::{
-        WebhookAdapter, create_installation_key, get_jwt_firebase, get_org_urls, org_available,
-        org_create, signup_user,
+        WebhookAdapter, create_installation_key, get_jwt_firebase, get_org_info, get_org_urls,
+        org_available, org_create, signup_user,
     },
     common::PROJECT_NAME,
     config::{Config, LcOrg},
     default::get_embedded_default,
-    oauth::{LoginArgs, authorize},
+    oauth::{LoginArgs, OAuthProvider, authorize},
 };
+
+/// A selectable OAuth provider option for the interactive menu
+struct ProviderOption {
+    label: &'static str,
+    provider: OAuthProvider,
+}
 
 const ORG_CREATE_TIMEOUT: Duration = Duration::from_secs(120);
 
@@ -56,6 +62,42 @@ fn query_org_name(token: &str) -> Result<String> {
 
         println!("{}", format!("{org_name} isn't available").red());
     }
+}
+
+/// Returns all available OAuth provider options for the menu
+fn get_provider_options() -> Vec<ProviderOption> {
+    vec![
+        ProviderOption {
+            label: "Google (Recommended)",
+            provider: OAuthProvider::Google,
+        },
+        ProviderOption {
+            label: "Microsoft",
+            provider: OAuthProvider::Microsoft,
+        },
+        ProviderOption {
+            label: "GitHub",
+            provider: OAuthProvider::GitHub,
+        },
+    ]
+}
+
+/// Prompt the user to select an OAuth provider
+fn query_oauth_provider() -> Result<OAuthProvider> {
+    let options = get_provider_options();
+    let labels: Vec<&str> = options.iter().map(|o| o.label).collect();
+
+    let selection = Select::new("Select authentication provider:", labels)
+        .with_starting_cursor(0) // Default to Google
+        .with_help_message("Use \u{2191}\u{2193} to navigate, Enter to select")
+        .prompt()
+        .context("Failed to read provider selection")?;
+
+    // Find the matching provider - this is safe because selection comes from our labels
+    Ok(options
+        .into_iter()
+        .find(|o| o.label == selection)
+        .map_or(OAuthProvider::Google, |o| o.provider))
 }
 
 fn wait_for_org(oid: &str, token: &str) -> Result<String> {
@@ -138,8 +180,11 @@ fn create_web_hook(oid: &str, jwt: &str, install_id: &str) -> Result<String> {
 ////////////////////////////////////////////////////////////////////////////////
 
 pub fn login(args: &LoginArgs) -> Result<()> {
+    // Ask user to select OAuth provider
+    let provider = query_oauth_provider()?;
+
     println!("Starting authentication...");
-    let login = authorize(args)?;
+    let login = authorize(provider, args)?;
     println!("Authentication successful.");
 
     //
@@ -162,23 +207,33 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     println!("Access token received.");
 
     //
-    // Ask the user for the org name
+    // Either use an existing org or create a new one
     //
-    let org_name = query_org_name(&jwt)?;
+    let (oid, org_name) = if let Some(ref existing_oid) = args.existing_org {
+        // Use existing org - fetch name from API
+        println!("Looking up existing organization...");
+        info!("Using existing org oid={existing_oid}");
+        let org_info =
+            get_org_info(&jwt, existing_oid).context("Unable to get organization info")?;
+        info!("Org name: {}", org_info.name);
+        println!("Using team '{}'.", org_info.name);
+        (existing_oid.clone(), org_info.name)
+    } else {
+        // Ask the user for the org name
+        let org_name = query_org_name(&jwt)?;
 
-    //
-    // It's an optional parameter
-    //
-    let location = ORG_DEFAULT_LOCATION;
+        // It's an optional parameter
+        let location = ORG_DEFAULT_LOCATION;
 
-    //
-    // Creating the organization
-    //
-    println!("Creating team '{org_name}'...");
-    info!("Creating {org_name} org in {location}");
-    let oid = org_create(&jwt, &org_name, location).context("Unable to create organization")?;
-    info!("Org created oid={oid}");
-    println!("Team created.");
+        // Creating the organization
+        println!("Creating team '{org_name}'...");
+        info!("Creating {org_name} org in {location}");
+        let oid =
+            org_create(&jwt, &org_name, location).context("Unable to create organization")?;
+        info!("Org created oid={oid}");
+        println!("Team created.");
+        (oid, org_name)
+    };
 
     //
     // get the final token
@@ -203,21 +258,25 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     config.org = org;
     config.save()?;
 
+    print_success_message(&config.org.name, &config.org.oid, &config.org.url);
+
+    Ok(())
+}
+
+/// Print the success message after team setup is complete
+fn print_success_message(org_name: &str, oid: &str, webhook_url: &str) {
     let join_curl = get_embedded_default("join_team_command");
-    let join_command = format!("{} {}", join_curl, config.org.url);
+    let join_command = format!("{join_curl} {webhook_url}");
     let join_curl_windows = get_embedded_default("join_team_command_windows");
-    let join_command_windows = join_curl_windows.replace("{URL}", &config.org.url);
-    let team_url = format!(
-        "https://app.limacharlie.io/viberails/teams/{}",
-        config.org.oid
-    );
+    let join_command_windows = join_curl_windows.replace("{URL}", webhook_url);
+    let team_url = format!("https://app.limacharlie.io/viberails/teams/{oid}");
 
     println!();
     println!("  {}", "═".repeat(60).as_str().dimmed());
     println!();
     println!("  {} Setup complete!", "✓".green().bold());
     println!();
-    println!("  Team: {}", config.org.name.cyan().bold());
+    println!("  Team: {}", org_name.cyan().bold());
     println!("  View: {}", team_url.cyan());
     println!();
     println!("  {}", "─".repeat(60).as_str().dimmed());
@@ -263,6 +322,119 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     println!();
     println!("  {}", "═".repeat(60).as_str().dimmed());
     println!();
+}
 
-    Ok(())
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_provider_options_contains_all_providers() {
+        let options = get_provider_options();
+
+        // Verify we have options for all providers
+        assert_eq!(options.len(), 3);
+
+        let providers: Vec<_> = options.iter().map(|o| o.provider).collect();
+        assert!(providers.contains(&OAuthProvider::Google));
+        assert!(providers.contains(&OAuthProvider::Microsoft));
+        assert!(providers.contains(&OAuthProvider::GitHub));
+    }
+
+    #[test]
+    fn test_provider_options_google_is_first() {
+        let options = get_provider_options();
+
+        // Google should be the first option (default selection)
+        assert_eq!(options[0].provider, OAuthProvider::Google);
+    }
+
+    #[test]
+    fn test_provider_options_labels_are_unique() {
+        let options = get_provider_options();
+        let labels: Vec<_> = options.iter().map(|o| o.label).collect();
+
+        // Verify all labels are unique
+        let mut unique_labels = labels.clone();
+        unique_labels.sort();
+        unique_labels.dedup();
+        assert_eq!(labels.len(), unique_labels.len());
+    }
+
+    #[test]
+    fn test_provider_options_labels_not_empty() {
+        let options = get_provider_options();
+
+        // Verify no empty labels
+        for option in &options {
+            assert!(!option.label.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_provider_lookup_finds_google() {
+        let options = get_provider_options();
+        let google_label = options
+            .iter()
+            .find(|o| o.provider == OAuthProvider::Google)
+            .map(|o| o.label)
+            .unwrap();
+
+        // Simulate the lookup that query_oauth_provider does
+        let found = options
+            .into_iter()
+            .find(|o| o.label == google_label)
+            .map_or(OAuthProvider::Google, |o| o.provider);
+
+        assert_eq!(found, OAuthProvider::Google);
+    }
+
+    #[test]
+    fn test_provider_lookup_finds_microsoft() {
+        let options = get_provider_options();
+        let microsoft_label = options
+            .iter()
+            .find(|o| o.provider == OAuthProvider::Microsoft)
+            .map(|o| o.label)
+            .unwrap();
+
+        // Simulate the lookup that query_oauth_provider does
+        let found = options
+            .into_iter()
+            .find(|o| o.label == microsoft_label)
+            .map_or(OAuthProvider::Google, |o| o.provider);
+
+        assert_eq!(found, OAuthProvider::Microsoft);
+    }
+
+    #[test]
+    fn test_provider_lookup_unknown_defaults_to_google() {
+        let options = get_provider_options();
+
+        // Simulate lookup with unknown label
+        let found = options
+            .into_iter()
+            .find(|o| o.label == "Unknown Provider")
+            .map_or(OAuthProvider::Google, |o| o.provider);
+
+        assert_eq!(found, OAuthProvider::Google);
+    }
+
+    #[test]
+    fn test_provider_lookup_finds_github() {
+        let options = get_provider_options();
+        let github_label = options
+            .iter()
+            .find(|o| o.provider == OAuthProvider::GitHub)
+            .map(|o| o.label)
+            .unwrap();
+
+        // Simulate the lookup that query_oauth_provider does
+        let found = options
+            .into_iter()
+            .find(|o| o.label == github_label)
+            .map_or(OAuthProvider::Google, |o| o.provider);
+
+        assert_eq!(found, OAuthProvider::GitHub);
+    }
 }
