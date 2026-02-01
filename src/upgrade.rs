@@ -12,7 +12,7 @@ struct ReleaseInfo {
 }
 
 use crate::{
-    common::{EXECUTABLE_EXT, EXECUTABLE_NAME, PROJECT_NAME, PROJECT_VERSION},
+    common::{EXECUTABLE_EXT, EXECUTABLE_NAME, PROJECT_NAME},
     default::get_embedded_default,
     hooks::binary_location,
 };
@@ -59,7 +59,7 @@ fn download_file(url: &str, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-fn self_uprade() -> Result<(bool, ReleaseInfo)> {
+fn self_uprade() -> Result<ReleaseInfo> {
     let plat = std::env::consts::OS;
     let arch = get_arch();
 
@@ -90,13 +90,6 @@ fn self_uprade() -> Result<(bool, ReleaseInfo)> {
 
     let version: ReleaseInfo = serde_json::from_str(&version_data)
         .with_context(|| format!("Unable to deserialize {version_data}"))?;
-
-    //
-    // Nothing to upgrade
-    //
-    if version.version.eq(PROJECT_VERSION) {
-        return Ok((false, version));
-    }
 
     download_file(&url_bin, &tmp_bin)?;
 
@@ -132,7 +125,7 @@ fn self_uprade() -> Result<(bool, ReleaseInfo)> {
         sleep(Duration::from_secs(5));
     }
 
-    Ok((true, version))
+    Ok(version)
 }
 
 ////////////////////////////////////////////////////////////////////////////////<
@@ -150,13 +143,9 @@ pub fn poll_upgrade() -> Result<()> {
 pub fn upgrade() -> Result<()> {
     info!("Upgrading");
 
-    let (upgraded, info) = self_uprade()?;
+    let version = self_uprade()?;
 
-    let msg = if upgraded {
-        format!("Successfully upgraded to {}", info.version).green()
-    } else {
-        format!("Already at the latest version {}", info.version).green()
-    };
+    let msg = format!("Successfully upgraded to {}", version.version).green();
 
     println!("{msg}");
     Ok(())
