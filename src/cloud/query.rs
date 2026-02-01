@@ -8,7 +8,9 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::{
-    cloud::REQUEST_TIMEOUT_SECS, common::display_authorize_help, config::Config,
+    cloud::REQUEST_TIMEOUT_SECS,
+    common::{PROJECT_VERSION, PROJECT_VERSION_HASH, display_authorize_help},
+    config::Config,
     providers::Providers,
 };
 
@@ -29,9 +31,17 @@ pub enum CloudVerdict {
 struct CloudResponse {
     success: bool,
     reason: Option<String>,
-    //error: Option<String>,
-    //rejected: Option<String>,
-    //rule: Option<String>,
+    #[allow(dead_code)]
+    error: Option<String>,
+    #[allow(dead_code)]
+    rejected: Option<bool>,
+    rule: Option<String>,
+}
+
+#[derive(Serialize)]
+struct CloudRequestMetaVersion {
+    version: &'static str,
+    hash: &'static str,
 }
 
 #[derive(Serialize)]
@@ -48,6 +58,7 @@ struct CloudRequestMeta<'a> {
     query_type: CloudQueryType,
     #[serde(skip_serializing_if = "Option::is_none")]
     username: Option<String>,
+    version: CloudRequestMetaVersion,
 }
 
 #[derive(Serialize)]
@@ -111,6 +122,11 @@ impl<'a> CloudRequestMeta<'a> {
             None
         };
 
+        let version = CloudRequestMetaVersion {
+            version: PROJECT_VERSION,
+            hash: PROJECT_VERSION_HASH,
+        };
+
         let username = whoami::username().ok();
 
         Ok(Self {
@@ -122,6 +138,7 @@ impl<'a> CloudRequestMeta<'a> {
             source,
             query_type,
             username,
+            version,
         })
     }
 }
@@ -155,8 +172,7 @@ impl<'a> CloudQuery<'a> {
     /// Extract the secret from the webhook URL and return the URL without it.
     /// The secret is sent via header to avoid proxies logging it in access logs.
     fn extract_secret_from_url(full_url: &str) -> Result<(String, String)> {
-        let mut parsed =
-            url::Url::parse(full_url).context("Invalid webhook URL format")?;
+        let mut parsed = url::Url::parse(full_url).context("Invalid webhook URL format")?;
 
         // Get path segments and extract the last one as the secret
         let segments: Vec<&str> = parsed
@@ -165,9 +181,7 @@ impl<'a> CloudQuery<'a> {
             .collect();
 
         if segments.len() < 3 {
-            bail!(
-                "Invalid webhook URL format. Expected: https://hooks.domain/oid/name/secret"
-            );
+            bail!("Invalid webhook URL format. Expected: https://hooks.domain/oid/name/secret");
         }
 
         // The last segment is the secret
@@ -260,8 +274,10 @@ impl<'a> CloudQuery<'a> {
         } else {
             let msg = if let Some(reason) = data.reason {
                 format!("deny reason: {reason}")
+            } else if let Some(rule) = data.rule {
+                format!("blocked by rule: {rule}")
             } else {
-                String::new()
+                "denied by policy".to_string()
             };
 
             CloudVerdict::Deny(msg)

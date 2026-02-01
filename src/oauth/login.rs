@@ -205,15 +205,50 @@ pub fn login(args: &LoginArgs) -> Result<()> {
 
     let join_curl = get_embedded_default("join_team_command");
     let join_command = format!("{} {}", join_curl, config.org.url);
+    let team_url = format!("https://app.limacharlie.io/viberails/teams/{}", config.org.oid);
 
     println!();
-    println!("  {} Setup complete!", "✓".green());
+    println!("  {}", "═".repeat(60).as_str().dimmed());
     println!();
-    println!("  Team: {}", config.org.name.cyan());
+    println!("  {} Setup complete!", "✓".green().bold());
     println!();
-    println!("  Add other machines to this team:");
+    println!("  Team: {}", config.org.name.cyan().bold());
+    println!("  View: {}", team_url.cyan());
     println!();
-    println!("  {}", join_command.cyan());
+    println!("  {}", "─".repeat(60).as_str().dimmed());
+    println!();
+    println!("  {} Add other machines to this team:", "→".blue());
+    println!();
+    println!("    {}", join_command.cyan());
+    println!();
+    println!("  {}", "─".repeat(60).as_str().dimmed());
+    println!();
+    println!(
+        "  Powered by {} {}",
+        "LimaCharlie".magenta().bold(),
+        "https://limacharlie.io".dimmed()
+    );
+    println!();
+    println!("  {} {}", "Terms of Service:".dimmed(), "https://app.limacharlie.io/tos".dimmed());
+    println!();
+    println!(
+        "  {}",
+        "TL;DR: Your data is your own—not sold, accessed, or monetized by".dimmed()
+    );
+    println!(
+        "  {}",
+        "LimaCharlie. Your team is created as a Community Edition Organization,".dimmed()
+    );
+    println!(
+        "  {}",
+        "completely free. Only limitation is over global throughput. Data is".dimmed()
+    );
+    println!(
+        "  {}",
+        "retained for 1 year unless you destroy the Organization.".dimmed()
+    );
+    println!();
+    println!("  {}", "═".repeat(60).as_str().dimmed());
     println!();
 
     Ok(())
