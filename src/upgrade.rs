@@ -1,13 +1,17 @@
-use std::{fs, io::Write, path::Path};
+use std::{fs, io::Write, path::Path, thread::sleep, time::Duration};
 
 use anyhow::{Context, Result, bail};
-use log::info;
+use colored::Colorize;
+use log::{info, warn};
+use tiny_http::StatusCode;
 
 use crate::{
     common::{EXECUTABLE_EXT, EXECUTABLE_NAME, PROJECT_NAME},
     default::get_embedded_default,
     hooks::binary_location,
 };
+
+const DEF_COPY_ATTEMPS: usize = 4;
 
 pub fn get_arch() -> &'static str {
     match std::env::consts::ARCH {
@@ -56,8 +60,9 @@ pub fn upgrade() -> Result<()> {
         .send_lazy()
         .with_context(|| "{url} failed")?;
 
-    if 200 != res.status_code {
-        bail!("{url} returned {}", res.status_code)
+    if !(200..300).contains(&res.status_code) {
+        let status_str = StatusCode::from(res.status_code).default_reason_phrase();
+        bail!("{url} returned {} ({})", res.status_code, status_str);
     }
 
     for bytes_reader in res {
@@ -76,8 +81,38 @@ pub fn upgrade() -> Result<()> {
 
     let dst = binary_location()?;
 
-    fs::copy(&tmp_file, &dst)
-        .with_context(|| format!("Unable to copy {} to {}", tmp_file.display(), dst.display()))?;
+    let mut attempts = DEF_COPY_ATTEMPS;
 
+    loop {
+        let ret = fs::copy(&tmp_file, &dst);
+
+        if ret.is_ok() {
+            break;
+        }
+
+        if let Err(e) = ret {
+            warn!(
+                "Unable to copy {} to {} ({e})",
+                tmp_file.display(),
+                dst.display()
+            );
+
+            if 0 == attempts {
+                return Err(e).with_context(|| {
+                    format!(
+                        "Unable to copy {} to {})",
+                        tmp_file.display(),
+                        dst.display()
+                    )
+                })?;
+            }
+        }
+
+        attempts -= 1;
+        sleep(Duration::from_secs(5));
+    }
+
+    let msg = format!("Successfully upgraded {}", dst.display()).green();
+    println!("{msg}");
     Ok(())
 }
