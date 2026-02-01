@@ -24,3 +24,35 @@ pub fn get_embedded_default(name: &'static str) -> String {
         .ok_or_else(|| anyhow!("missing default: {name}"))
         .expect("embedded default should exist")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_required_defaults_exist() {
+        // These are used at runtime and must exist
+        let required_keys = [
+            "firebase_api_key",
+            "firebase_signup_url",
+            "join_team_command",
+            "join_team_command_windows",
+            "upgrade_url",
+            "github_client_id",
+        ];
+
+        for key in required_keys {
+            let value = get_embedded_default(key);
+            assert!(!value.is_empty(), "{key} should not be empty");
+        }
+    }
+
+    #[test]
+    fn test_join_team_command_windows_has_url_placeholder() {
+        let cmd = get_embedded_default("join_team_command_windows");
+        assert!(
+            cmd.contains("{URL}"),
+            "Windows join command should contain {{URL}} placeholder"
+        );
+    }
+}
