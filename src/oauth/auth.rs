@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 use tiny_http::{Response, Server};
 use url::Url;
 
+use crate::common::user_agent;
 use crate::default::get_embedded_default;
 
 #[derive(Embed)]
@@ -346,6 +347,7 @@ fn request_github_device_code(client_id: &str) -> Result<GitHubDeviceCodeRespons
     );
 
     let response = minreq::post(GITHUB_DEVICE_CODE)
+        .with_header("User-Agent", user_agent())
         .with_header("Accept", "application/json")
         .with_body(body)
         .with_header("Content-Type", "application/x-www-form-urlencoded")
@@ -400,6 +402,7 @@ fn poll_github_access_token(
         );
 
         let response = minreq::post(GITHUB_ACCESS_TOKEN)
+            .with_header("User-Agent", user_agent())
             .with_header("Accept", "application/json")
             .with_body(body)
             .with_header("Content-Type", "application/x-www-form-urlencoded")
@@ -464,6 +467,7 @@ fn exchange_github_token_for_firebase(github_access_token: &str) -> Result<OAuth
     };
 
     let response = minreq::post(&url)
+        .with_header("User-Agent", user_agent())
         .with_json(&payload)?
         .with_timeout(10)
         .send()
@@ -843,6 +847,7 @@ fn exchange_code_for_tokens(
     };
 
     let response = minreq::post(&url)
+        .with_header("User-Agent", user_agent())
         .with_json(&payload)?
         .with_timeout(10)
         .send()
@@ -927,6 +932,7 @@ fn create_auth_uri(provider: OAuthProvider, redirect_uri: &str) -> Result<(Strin
     };
 
     let response = minreq::post(&url)
+        .with_header("User-Agent", user_agent())
         .with_json(&payload)?
         .with_timeout(10)
         .send()
@@ -973,6 +979,7 @@ fn finalize_mfa(
     };
 
     let response = minreq::post(&url)
+        .with_header("User-Agent", user_agent())
         .with_json(&payload)?
         .with_timeout(15)
         .send()

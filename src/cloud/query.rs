@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 use crate::{
     cloud::REQUEST_TIMEOUT_SECS,
-    common::{PROJECT_VERSION, PROJECT_VERSION_HASH, display_authorize_help},
+    common::{PROJECT_VERSION, PROJECT_VERSION_HASH, display_authorize_help, user_agent},
     config::Config,
     providers::Providers,
 };
@@ -221,6 +221,7 @@ impl<'a> CloudQuery<'a> {
 
         let ret = minreq::post(&self.url)
             .with_timeout(REQUEST_TIMEOUT_SECS)
+            .with_header("User-Agent", user_agent())
             .with_header("lc-secret", &self.secret)
             .with_json(&req)
             .context("Failed to serialize notification request")?
@@ -253,6 +254,7 @@ impl<'a> CloudQuery<'a> {
 
         let res = minreq::post(&self.url)
             .with_timeout(REQUEST_TIMEOUT_SECS)
+            .with_header("User-Agent", user_agent())
             .with_header("lc-secret", &self.secret)
             .with_json(&req)
             .context("Failed to serialize authorization request")?
