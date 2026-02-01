@@ -55,6 +55,14 @@ curl -sSL https://get.viberails.io | bash
 viberails init-team
 ```
 
+You'll be prompted to select an OAuth provider (Google, Microsoft, or GitHub) and enter your team name. The browser will open for authentication.
+
+To use an existing LimaCharlie organization:
+
+```bash
+viberails init-team --existing-org
+```
+
 ### 2. Install Hooks
 
 ```bash
@@ -125,6 +133,7 @@ viberails configure --fail-open false
 | `list` | Show installed hooks |
 | `configure` | Modify settings |
 | `show-config` | Display current configuration |
+| `upgrade` | Update to the latest version |
 
 ## Architecture
 
@@ -189,17 +198,20 @@ cargo build --release
 
 ## Requirements
 
-- macOS or Linux
+- macOS, Linux, or Windows
 - One or more supported AI coding tools installed
 - Internet connection for team features (or use local-only mode)
 
 ## Contributing
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+We welcome contributions! Before submitting code:
 
-## License
+```bash
+cargo clippy -- -D warnings  # No warnings allowed
+cargo test                   # All tests must pass
+```
 
-[License details here]
+These checks are enforced by pre-commit hooks.
 
 ## Support
 
