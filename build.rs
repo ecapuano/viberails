@@ -1,46 +1,27 @@
-use git2::{DescribeOptions, Repository};
+use std::process::Command;
 
 fn main() {
-    // Link Windows system libraries required by libgit2-sys
-    #[cfg(windows)]
-    {
-        println!("cargo:rustc-link-lib=advapi32");
-        println!("cargo:rustc-link-lib=crypt32");
-    }
+    let git_hash = Command::new("git")
+        .args(["rev-parse", "--short=7", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map_or_else(|| "gunknown".to_string(), |s| format!("g{}", s.trim()));
 
-    let (git_hash, git_version) = match Repository::discover(".") {
-        Ok(repo) => {
-            let hash = repo
-                .head()
-                .ok()
-                .and_then(|head| head.peel_to_commit().ok())
-                .map_or_else(
-                    || "unknown".to_string(),
-                    |commit| {
-                        let id = commit.id();
-                        // Short hash with 'g' prefix (git convention)
-                        format!("g{}", &id.to_string()[..7])
-                    },
-                );
-
-            // Get version from the nearest tag only
-            let version = repo
-                .describe(DescribeOptions::new().describe_tags())
-                .ok()
-                .and_then(|desc| desc.format(None).ok())
-                .map_or_else(
-                    || "unknown".to_string(),
-                    |v| {
-                        // Strip 'v' prefix and any suffix like "-2-g1fa6a60"
-                        let v = v.strip_prefix('v').unwrap_or(&v);
-                        v.split('-').next().unwrap_or(v).to_string()
-                    },
-                );
-
-            (hash, version)
-        }
-        Err(_) => ("gunknown".to_string(), "unknown".to_string()),
-    };
+    let git_version = Command::new("git")
+        .args(["describe", "--tags", "--abbrev=0"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map_or_else(
+            || "unknown".to_string(),
+            |s| {
+                let trimmed = s.trim();
+                trimmed.strip_prefix('v').unwrap_or(trimmed).to_string()
+            },
+        );
 
     println!("cargo::rerun-if-changed=.git/HEAD");
     println!("cargo::rerun-if-changed=.git/refs/heads");
