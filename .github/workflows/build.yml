@@ -140,8 +140,7 @@ jobs:
 
                   # Create entitlements archive
                   mkdir -p entitlements
-                  cp signing/entitlements/viberails-macos-arm64.plist entitlements/
-                  cp signing/entitlements/viberails-macos-x86.plist entitlements/
+                  cp signing/entitlements/*.plist entitlements/
                   zip -r dist/entitlements.zip entitlements
 
                   # Determine version
