@@ -22,7 +22,7 @@ struct ReleaseInfo {
 }
 
 use crate::{
-    common::{EXECUTABLE_EXT, EXECUTABLE_NAME, PROJECT_NAME, PROJECT_VERSION},
+    common::{EXECUTABLE_EXT, EXECUTABLE_NAME, PROJECT_NAME, PROJECT_VERSION, user_agent},
     default::get_embedded_default,
     hooks::binary_location,
 };
@@ -61,6 +61,7 @@ fn download_file(url: &str, dst: &Path) -> Result<()> {
     info!("Downloading: {url}");
 
     let res = minreq::get(url)
+        .with_header("User-Agent", user_agent())
         .send()
         .with_context(|| format!("{url} failed"))?;
 

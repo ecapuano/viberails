@@ -1,10 +1,24 @@
-use std::{env, fs, path::PathBuf};
+use std::{env, fs, path::PathBuf, sync::OnceLock};
 
 use anyhow::{Context, Result, anyhow};
 
 pub const PROJECT_NAME: &str = env!("CARGO_PKG_NAME");
 pub const PROJECT_VERSION: &str = env!("GIT_VERSION");
 pub const PROJECT_VERSION_HASH: &str = env!("GIT_HASH");
+
+/// Returns the User-Agent header for HTTP requests: "viberails/VERSION (OS; ARCH)"
+pub fn user_agent() -> &'static str {
+    static USER_AGENT: OnceLock<String> = OnceLock::new();
+    USER_AGENT.get_or_init(|| {
+        format!(
+            "{}/{} ({}; {})",
+            PROJECT_NAME,
+            PROJECT_VERSION,
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        )
+    })
+}
 
 #[cfg(windows)]
 pub const EXECUTABLE_NAME: &str = concat!(env!("CARGO_PKG_NAME"), ".exe");
