@@ -39,6 +39,7 @@ pub enum OAuthProvider {
     #[default]
     Google,
     Microsoft,
+    GitHub,
 }
 
 impl OAuthProvider {
@@ -46,6 +47,7 @@ impl OAuthProvider {
         match self {
             Self::Google => "google.com",
             Self::Microsoft => "microsoft.com",
+            Self::GitHub => "github.com",
         }
     }
 }
@@ -737,4 +739,16 @@ fn html_escape(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#x27;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_oauth_provider_firebase_ids() {
+        assert_eq!(OAuthProvider::Google.as_firebase_id(), "google.com");
+        assert_eq!(OAuthProvider::Microsoft.as_firebase_id(), "microsoft.com");
+        assert_eq!(OAuthProvider::GitHub.as_firebase_id(), "github.com");
+    }
 }

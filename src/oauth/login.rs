@@ -75,6 +75,10 @@ fn get_provider_options() -> Vec<ProviderOption> {
             label: "Microsoft",
             provider: OAuthProvider::Microsoft,
         },
+        ProviderOption {
+            label: "GitHub",
+            provider: OAuthProvider::GitHub,
+        },
     ]
 }
 
@@ -322,12 +326,13 @@ mod tests {
     fn test_provider_options_contains_all_providers() {
         let options = get_provider_options();
 
-        // Verify we have options for both providers
-        assert_eq!(options.len(), 2);
+        // Verify we have options for all providers
+        assert_eq!(options.len(), 3);
 
         let providers: Vec<_> = options.iter().map(|o| o.provider).collect();
         assert!(providers.contains(&OAuthProvider::Google));
         assert!(providers.contains(&OAuthProvider::Microsoft));
+        assert!(providers.contains(&OAuthProvider::GitHub));
     }
 
     #[test]
@@ -407,5 +412,23 @@ mod tests {
             .map_or(OAuthProvider::Google, |o| o.provider);
 
         assert_eq!(found, OAuthProvider::Google);
+    }
+
+    #[test]
+    fn test_provider_lookup_finds_github() {
+        let options = get_provider_options();
+        let github_label = options
+            .iter()
+            .find(|o| o.provider == OAuthProvider::GitHub)
+            .map(|o| o.label)
+            .unwrap();
+
+        // Simulate the lookup that query_oauth_provider does
+        let found = options
+            .into_iter()
+            .find(|o| o.label == github_label)
+            .map_or(OAuthProvider::Google, |o| o.provider);
+
+        assert_eq!(found, OAuthProvider::GitHub);
     }
 }
