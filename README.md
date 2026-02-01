@@ -51,7 +51,7 @@ AI coding assistants like Claude Code, Cursor, and Copilot are transforming how 
 
 ```bash
 # Download and run
-curl -sSL https://get.viberails.io | bash
+curl -sSL https://get.viberails.io/install.sh | bash
 
 # Initialize your team (opens browser for OAuth)
 viberails init-team
