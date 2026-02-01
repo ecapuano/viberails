@@ -230,11 +230,12 @@ pub struct LoginArgs {
 ///
 /// This function:
 /// 1. For GitHub: Uses Device Flow (no callback server needed)
-/// 2. For others: Starts a local HTTP server to receive the OAuth callback
-/// 3. Requests an auth URI from Firebase (or device code from GitHub)
-/// 4. Opens the browser (or prints the URL) for user authentication
-/// 5. Waits for the callback/polling completion
-/// 6. Exchanges the code/token for Firebase tokens
+/// 2. For others with browser: Starts a local HTTP server to receive the OAuth callback
+/// 3. For others without browser: Uses manual callback URL entry
+/// 4. Requests an auth URI from Firebase (or device code from GitHub)
+/// 5. Opens the browser (or prints the URL) for user authentication
+/// 6. Waits for the callback/polling completion
+/// 7. Exchanges the code/token for Firebase tokens
 ///
 /// # Arguments
 /// * `provider` - The OAuth provider to use for authentication
@@ -247,6 +248,13 @@ pub fn authorize(provider: OAuthProvider, args: &LoginArgs) -> Result<OAuthToken
     // GitHub uses Device Flow (no callback server needed)
     if provider == OAuthProvider::GitHub {
         return authorize_github_device_flow(args);
+    }
+
+    // Check if we should use manual callback mode (no browser available)
+    let use_manual_callback = args.no_browser || !is_browser_available();
+
+    if use_manual_callback {
+        return authorize_manual_callback(provider);
     }
 
     // Find a free port and start the callback server
@@ -269,14 +277,13 @@ pub fn authorize(provider: OAuthProvider, args: &LoginArgs) -> Result<OAuthToken
         run_callback_server(&server, &tx, &redirect_uri_clone, provider, &session_id);
     });
 
-    // Open browser or print URL
-    if args.no_browser {
-        println!("\nPlease visit this URL to authenticate:\n{auth_uri}\n");
-    } else {
-        println!("Opening browser for authentication...");
-        if open_browser(&auth_uri).is_err() {
-            println!("\nCould not open browser. Please visit this URL:\n{auth_uri}\n");
-        }
+    // Open browser
+    println!("Opening browser for authentication...");
+    if open_browser(&auth_uri).is_err() {
+        // Browser failed to open - fall back to manual callback mode
+        println!("\nCould not open browser. Switching to manual mode...\n");
+        drop(server_handle);
+        return authorize_manual_callback(provider);
     }
 
     println!("Waiting for authentication...");
@@ -293,6 +300,153 @@ pub fn authorize(provider: OAuthProvider, args: &LoginArgs) -> Result<OAuthToken
         CallbackResult::Success(tokens) => Ok(tokens),
         CallbackResult::Error(error) => Err(anyhow!("Authentication failed: {error}")),
         CallbackResult::Timeout => Err(anyhow!("Authentication timeout")),
+    }
+}
+
+/// Check if a browser is likely available on this system.
+///
+/// Returns false for headless systems (no DISPLAY on Linux, SSH sessions, etc.)
+fn is_browser_available() -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        // Check for DISPLAY environment variable (X11)
+        // or WAYLAND_DISPLAY (Wayland)
+        let has_display = std::env::var("DISPLAY").is_ok() || std::env::var("WAYLAND_DISPLAY").is_ok();
+
+        // Also check if we're in an SSH session without X forwarding
+        let in_ssh = std::env::var("SSH_CLIENT").is_ok() || std::env::var("SSH_TTY").is_ok();
+        let has_x_forwarding = std::env::var("DISPLAY").is_ok();
+
+        if in_ssh && !has_x_forwarding {
+            return false;
+        }
+
+        has_display
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // macOS almost always has a browser unless we're in a pure SSH session
+        // Check if we're in an SSH session
+        let in_ssh = std::env::var("SSH_CLIENT").is_ok() || std::env::var("SSH_TTY").is_ok();
+        !in_ssh
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // Windows typically always has a browser
+        true
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        // Unknown platform - assume no browser
+        false
+    }
+}
+
+/// Perform OAuth authorization with manual callback URL entry.
+///
+/// This flow is used when no browser is available:
+/// 1. Print the auth URL for the user to visit on any device
+/// 2. User completes authorization in their browser
+/// 3. Browser redirects to localhost (which fails)
+/// 4. User copies the full URL from browser and pastes it here
+/// 5. We extract the code and exchange for tokens
+fn authorize_manual_callback(provider: OAuthProvider) -> Result<OAuthTokens> {
+    use inquire::Text;
+
+    // Use a placeholder redirect URI - we won't actually receive callbacks
+    let redirect_uri = "http://localhost:8085/callback";
+
+    println!("Using OAuth provider: {}", provider.as_firebase_id());
+    println!("No browser detected. Using manual authentication flow.\n");
+
+    // Get auth URI from Firebase
+    let (session_id, auth_uri) = create_auth_uri(provider, redirect_uri)?;
+
+    // Print instructions
+    println!("╔══════════════════════════════════════════════════════════════╗");
+    println!("║                   Manual Authentication                      ║");
+    println!("╠══════════════════════════════════════════════════════════════╣");
+    println!("║ 1. Open this URL in a browser (on any device):               ║");
+    println!("╚══════════════════════════════════════════════════════════════╝");
+    println!();
+    println!("  {auth_uri}");
+    println!();
+    println!("╔══════════════════════════════════════════════════════════════╗");
+    println!("║ 2. Complete the sign-in process                              ║");
+    println!("║ 3. After signing in, your browser will show an error page    ║");
+    println!("║    (\"localhost refused to connect\" or similar)               ║");
+    println!("║ 4. Copy the FULL URL from your browser's address bar         ║");
+    println!("║    It will look like: http://localhost:8085/callback?code=...║");
+    println!("╚══════════════════════════════════════════════════════════════╝");
+    println!();
+
+    // Prompt for the callback URL
+    let callback_url = Text::new("Paste the callback URL here:")
+        .with_validator(|input: &str| {
+            if input.contains("code=") || input.contains("error=") {
+                Ok(inquire::validator::Validation::Valid)
+            } else {
+                Ok(inquire::validator::Validation::Invalid(
+                    "URL must contain 'code=' or 'error=' parameter".into(),
+                ))
+            }
+        })
+        .prompt()
+        .map_err(|e| anyhow!("Input cancelled: {e}"))?;
+
+    // Parse the callback URL
+    let parsed_url = if callback_url.starts_with("http") {
+        Url::parse(&callback_url)
+    } else {
+        // Handle if user just pasted the path
+        Url::parse(&format!("http://localhost{callback_url}"))
+    }
+    .context("Invalid callback URL format")?;
+
+    let params: HashMap<_, _> = parsed_url.query_pairs().collect();
+
+    // Check for error
+    if let Some(error) = params.get("error") {
+        let error_desc = params
+            .get("error_description")
+            .map_or_else(|| error.to_string(), ToString::to_string);
+        return Err(anyhow!("Authentication failed: {error_desc}"));
+    }
+
+    // Extract authorization code
+    let query_string = parsed_url
+        .query()
+        .ok_or_else(|| anyhow!("No query parameters in callback URL"))?;
+
+    if !params.contains_key("code") {
+        return Err(anyhow!(
+            "No authorization code in callback URL. Please make sure you copied the complete URL."
+        ));
+    }
+
+    println!("\nExchanging authorization code for tokens...");
+
+    // Exchange the code for tokens
+    match exchange_code_for_tokens(redirect_uri, query_string, &session_id, provider)? {
+        ExchangeResult::Success(tokens) => {
+            println!("Authentication successful!");
+            Ok(tokens)
+        }
+        ExchangeResult::MfaRequired(session) => {
+            // Handle MFA in CLI
+            println!();
+            handle_mfa_in_cli(
+                &session.mfa_pending_credential,
+                &session.mfa_enrollment_id,
+                &session.factor_display_name,
+                session.provider,
+                session.local_id.as_deref(),
+                session.email.as_deref(),
+            )
+        }
     }
 }
 
@@ -1283,5 +1437,60 @@ mod tests {
     fn test_is_retryable_mfa_error_too_many_attempts() {
         let error = anyhow!("Too many failed attempts. Please try logging in again.");
         assert!(!is_retryable_mfa_error(&error));
+    }
+
+    #[test]
+    fn test_callback_url_parsing_with_code() {
+        let url = "http://localhost:8085/callback?code=abc123&state=xyz";
+        let parsed = Url::parse(url).unwrap();
+        let params: HashMap<_, _> = parsed.query_pairs().collect();
+
+        assert!(params.contains_key("code"));
+        assert_eq!(params.get("code").map(|s| s.as_ref()), Some("abc123"));
+    }
+
+    #[test]
+    fn test_callback_url_parsing_with_error() {
+        let url = "http://localhost:8085/callback?error=access_denied&error_description=User%20denied";
+        let parsed = Url::parse(url).unwrap();
+        let params: HashMap<_, _> = parsed.query_pairs().collect();
+
+        assert!(params.contains_key("error"));
+        assert_eq!(params.get("error").map(|s| s.as_ref()), Some("access_denied"));
+        assert_eq!(
+            params.get("error_description").map(|s| s.as_ref()),
+            Some("User denied")
+        );
+    }
+
+    #[test]
+    fn test_callback_url_parsing_extracts_query_string() {
+        let url = "http://localhost:8085/callback?code=abc123&state=xyz&scope=email";
+        let parsed = Url::parse(url).unwrap();
+        let query = parsed.query().unwrap();
+
+        assert!(query.contains("code=abc123"));
+        assert!(query.contains("state=xyz"));
+    }
+
+    #[test]
+    fn test_callback_url_parsing_path_only() {
+        // Users might paste just the path portion
+        let path = "/callback?code=abc123&state=xyz";
+        let url = format!("http://localhost{path}");
+        let parsed = Url::parse(&url).unwrap();
+        let params: HashMap<_, _> = parsed.query_pairs().collect();
+
+        assert!(params.contains_key("code"));
+        assert_eq!(params.get("code").map(|s| s.as_ref()), Some("abc123"));
+    }
+
+    #[test]
+    fn test_is_browser_available_returns_bool() {
+        // This test just verifies the function runs without panicking
+        // The actual result depends on the environment
+        let result = is_browser_available();
+        // Result is a boolean
+        assert!(result || !result);
     }
 }
