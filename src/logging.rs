@@ -27,7 +27,6 @@ impl Logging {
 
     pub fn start(&self) -> Result<()> {
         let mut b = env_logger::builder();
-        b.filter_level(log::LevelFilter::Info);
 
         if let Some(file_name) = &self.file_name {
             let log_file = get_log_file_path(file_name)?;
