@@ -122,6 +122,10 @@ jobs:
                   # Copy install scripts
                   cp installer/install.sh dist/
                   cp installer/install.ps1 dist/
+                  cp installer/join.ps1 dist/
+
+                  # Copy signing entitlements
+                  cp signing/entitlements/viberails.plist dist/
 
                   # Determine version
                   VERSION="${GITHUB_REF_NAME}"
