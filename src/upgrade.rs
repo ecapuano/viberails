@@ -103,7 +103,7 @@ pub fn upgrade() -> Result<()> {
             }
         }
 
-        attempts -= 1;
+        attempts = attempts.saturating_sub(1);
         sleep(Duration::from_secs(5));
     }
 
