@@ -9,7 +9,6 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use colored::Colorize;
 use log::{info, warn};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -349,7 +348,7 @@ pub fn poll_upgrade() -> Result<()> {
         // time to try to upgrade
         //
         info!("time to upgrade");
-        upgrade(true)?;
+        upgrade()?;
     } else {
         previous_upgrade_cleanup();
     }
@@ -357,7 +356,7 @@ pub fn poll_upgrade() -> Result<()> {
     Ok(())
 }
 
-pub fn upgrade(quiet: bool) -> Result<()> {
+pub fn upgrade() -> Result<()> {
     info!("Upgrading");
 
     previous_upgrade_cleanup();
@@ -378,14 +377,8 @@ pub fn upgrade(quiet: bool) -> Result<()> {
         //
         info!("spawning upgrade process");
         spawn_upgrade()?;
-    } else if let Some(release) = self_upgrade()? {
-        if !quiet {
-            let msg = format!("Successfully upgraded to {}", release.version).green();
-            println!("{msg}");
-        }
-    } else if !quiet {
-        let msg = format!("Already on latest version {PROJECT_VERSION}").green();
-        println!("{msg}");
+    } else {
+        self_upgrade()?;
     }
 
     Ok(())

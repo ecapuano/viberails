@@ -109,7 +109,7 @@ fn main() -> Result<()> {
         Command::ShowConfiguration => show_configuration(),
         Command::InitTeam(args) => login(&args),
         Command::JoinTeam(args) => join_team(&args),
-        Command::Upgrade => upgrade(true),
+        Command::Upgrade => upgrade(),
 
         // Provider callbacks
         Command::ClaudeCallback => hook(Providers::ClaudeCode),
