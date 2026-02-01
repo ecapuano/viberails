@@ -182,6 +182,10 @@ pub struct LoginArgs {
     /// Print the URL instead of opening a browser
     #[arg(long)]
     pub no_browser: bool,
+
+    /// Use an existing organization instead of creating a new one
+    #[arg(long, value_name = "OID")]
+    pub existing_org: Option<String>,
 }
 
 /// Perform OAuth authorization flow.

@@ -7,8 +7,8 @@ use log::info;
 
 use crate::{
     cloud::lc_api::{
-        WebhookAdapter, create_installation_key, get_jwt_firebase, get_org_urls, org_available,
-        org_create, signup_user,
+        WebhookAdapter, create_installation_key, get_jwt_firebase, get_org_info, get_org_urls,
+        org_available, org_create, signup_user,
     },
     common::PROJECT_NAME,
     config::{Config, LcOrg},
@@ -162,23 +162,33 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     println!("Access token received.");
 
     //
-    // Ask the user for the org name
+    // Either use an existing org or create a new one
     //
-    let org_name = query_org_name(&jwt)?;
+    let (oid, org_name) = if let Some(ref existing_oid) = args.existing_org {
+        // Use existing org - fetch name from API
+        println!("Looking up existing organization...");
+        info!("Using existing org oid={existing_oid}");
+        let org_info =
+            get_org_info(&jwt, existing_oid).context("Unable to get organization info")?;
+        info!("Org name: {}", org_info.name);
+        println!("Using team '{}'.", org_info.name);
+        (existing_oid.clone(), org_info.name)
+    } else {
+        // Ask the user for the org name
+        let org_name = query_org_name(&jwt)?;
 
-    //
-    // It's an optional parameter
-    //
-    let location = ORG_DEFAULT_LOCATION;
+        // It's an optional parameter
+        let location = ORG_DEFAULT_LOCATION;
 
-    //
-    // Creating the organization
-    //
-    println!("Creating team '{org_name}'...");
-    info!("Creating {org_name} org in {location}");
-    let oid = org_create(&jwt, &org_name, location).context("Unable to create organization")?;
-    info!("Org created oid={oid}");
-    println!("Team created.");
+        // Creating the organization
+        println!("Creating team '{org_name}'...");
+        info!("Creating {org_name} org in {location}");
+        let oid =
+            org_create(&jwt, &org_name, location).context("Unable to create organization")?;
+        info!("Org created oid={oid}");
+        println!("Team created.");
+        (oid, org_name)
+    };
 
     //
     // get the final token
