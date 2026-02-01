@@ -124,10 +124,25 @@ fn display_results(results: &[InstallResult]) {
 fn install_binary(dst: &Path) -> Result<()> {
     info!("Install location {}", dst.display());
 
-    //
-    // We'll try to overwrite regardlless if it exists or not
-    //
     let current_exe = env::current_exe().context("Unable to find current exe")?;
+
+    //
+    // Skip copy if we're already running from the install location
+    //
+    if current_exe == dst {
+        info!("already installed at {}", dst.display());
+        return Ok(());
+    }
+
+    //
+    // On Linux, we can't overwrite a running binary ("Text file busy" error).
+    // However, we can delete it first - Linux allows deleting a running executable
+    // because the file is only truly removed when all processes using it exit.
+    //
+    if dst.exists() {
+        fs::remove_file(dst).with_context(|| format!("Unable to remove {}", dst.display()))?;
+        info!("removed existing binary at {}", dst.display());
+    }
 
     fs::copy(&current_exe, dst).with_context(|| {
         format!(
