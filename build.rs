@@ -1,6 +1,13 @@
 use git2::{DescribeOptions, Repository};
 
 fn main() {
+    // Link Windows system libraries required by libgit2-sys
+    #[cfg(windows)]
+    {
+        println!("cargo:rustc-link-lib=advapi32");
+        println!("cargo:rustc-link-lib=crypt32");
+    }
+
     let (git_hash, git_version) = match Repository::discover(".") {
         Ok(repo) => {
             let hash = repo
