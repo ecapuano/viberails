@@ -12,7 +12,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 use crate::{
-    common::PROJECT_NAME,
+    common::{PROJECT_NAME, PROJECT_VERSION},
     config::{JoinTeamArgs, join_team, show_configuration},
     hooks::{hook, install, list, uninstall},
     logging::Logging,
@@ -22,7 +22,7 @@ use crate::{
 };
 
 #[derive(Parser)]
-#[command(version, about, long_about = None)]
+#[command(version =  PROJECT_VERSION, about, long_about = None)]
 pub struct UserArgs {
     #[command(subcommand)]
     command: Command,
