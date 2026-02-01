@@ -122,7 +122,7 @@ jobs:
                   # Copy install script
                   cp installer/install.sh dist/
 
-                  # Create meta.json with version info
+                  # Create release.json with version info
                   VERSION="${GITHUB_REF_NAME}"
                   if [[ ! "$VERSION" =~ ^v ]]; then
                       VERSION="${GITHUB_SHA:0:7}"
