@@ -1,4 +1,10 @@
-use std::{fs, io::Write, path::Path, thread::sleep, time::Duration};
+use std::{
+    env, fs,
+    io::Write,
+    path::Path,
+    thread::sleep,
+    time::{Duration, SystemTime},
+};
 
 use anyhow::{Context, Result, bail};
 use colored::Colorize;
@@ -18,6 +24,7 @@ use crate::{
 };
 
 const DEF_COPY_ATTEMPS: usize = 4;
+const DEF_UPGRADE_CHECK: Duration = Duration::from_hours(6);
 
 fn get_arch() -> &'static str {
     match std::env::consts::ARCH {
@@ -128,17 +135,67 @@ fn self_uprade() -> Result<ReleaseInfo> {
     Ok(version)
 }
 
+fn is_binary_older(max_age: &Duration) -> bool {
+    let Ok(exe_path) = std::env::current_exe() else {
+        return false;
+    };
+
+    let Ok(metadata) = fs::metadata(&exe_path) else {
+        return false;
+    };
+
+    // Try created time first, fall back to modified time
+    let file_time = metadata.created().or_else(|_| metadata.modified());
+
+    let Ok(file_time) = file_time else {
+        return false;
+    };
+
+    let Ok(elapsed) = SystemTime::now().duration_since(file_time) else {
+        return false;
+    };
+
+    &elapsed > max_age
+}
+
+fn spawn_upgrade() -> Result<()> {
+    //
+    // We can't just upgrade our own because windows locks the current
+    // executable to we can't simply overwrite it. We have to make a copy of
+    // ourselves do the upgrade
+    //
+    let td = tempfile::Builder::new()
+        .prefix("upgrade_")
+        .tempdir()
+        .context("Unable to create a temp directory")?;
+
+    let src = env::current_exe()?;
+    let dst = td.path().join(PROJECT_NAME);
+
+    fs::copy(src, &dst)?;
+
+    //
+    // Now we can invoke it
+    //
+    #[cfg(not(windows))]
+    make_executable(&dst)?;
+
+    Ok(())
+}
+
 ////////////////////////////////////////////////////////////////////////////////<
 // PUB
 ////////////////////////////////////////////////////////////////////////////////
 
-/*
 pub fn poll_upgrade() -> Result<()> {
-    let config_dir = project_config_dir()?;
+    if is_binary_older(&DEF_UPGRADE_CHECK) {
+        //
+        // time to try to upgrade
+        //
+    }
 
     Ok(())
 }
-*/
 
 pub fn upgrade() -> Result<()> {
     info!("Upgrading");
