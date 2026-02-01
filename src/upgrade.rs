@@ -383,11 +383,9 @@ pub fn upgrade(quiet: bool) -> Result<()> {
             let msg = format!("Successfully upgraded to {}", release.version).green();
             println!("{msg}");
         }
-    } else {
-        if !quiet {
-            let msg = format!("Already on latest version {PROJECT_VERSION}").green();
-            println!("{msg}");
-        }
+    } else if !quiet {
+        let msg = format!("Already on latest version {PROJECT_VERSION}").green();
+        println!("{msg}");
     }
 
     Ok(())

@@ -14,32 +14,32 @@ AI coding assistants like Claude Code, Cursor, and Copilot are transforming how 
 
 ### The Value
 
-| Without Viberails | With Viberails |
-|-------------------|----------------|
+| Without Viberails                | With Viberails                       |
+| -------------------------------- | ------------------------------------ |
 | No visibility into AI tool usage | Complete audit trail of every action |
-| Risky operations go unnoticed | Real-time authorization controls |
-| Compliance gaps | Full audit logs for security reviews |
-| Each developer is an island | Team-wide visibility and policies |
-| Hope nothing goes wrong | Know exactly what's happening |
+| Risky operations go unnoticed    | Real-time authorization controls     |
+| Compliance gaps                  | Full audit logs for security reviews |
+| Each developer is an island      | Team-wide visibility and policies    |
+| Hope nothing goes wrong          | Know exactly what's happening        |
 
 ## Features
 
 - **Multi-Tool Support** - Works with the most popular AI coding assistants:
-  - Claude Code
-  - Cursor
-  - Gemini CLI
-  - OpenAI Codex CLI
-  - OpenCode
-  - Clawdbot/OpenClaw
+    - Claude Code
+    - Cursor
+    - Gemini CLI
+    - OpenAI Codex CLI
+    - OpenCode
+    - Clawdbot/OpenClaw
 
 - **Zero Friction Setup** - Install in under 2 minutes with automatic tool detection
 
 - **Team Collaboration** - One person sets up the team, everyone else joins with a single command
 
 - **Privacy Controls** - Choose what gets sent to the cloud:
-  - Full audit (tool calls + prompts)
-  - Tool authorization only (no prompts)
-  - Fully local operation
+    - Full audit (tool calls + prompts)
+    - Tool authorization only (no prompts)
+    - Fully local operation
 
 - **Fail-Safe Design** - Configurable fail-open/fail-closed behavior ensures developers aren't blocked
 
@@ -47,9 +47,21 @@ AI coding assistants like Claude Code, Cursor, and Copilot are transforming how 
 
 ### 1. Create Your Team
 
+**macOS/Linux:**
+
 ```bash
 # Download and run
 curl -sSL https://get.viberails.io | bash
+
+# Initialize your team (opens browser for OAuth)
+viberails init-team
+```
+
+**Windows (PowerShell):**
+
+```powershell
+# Download and run
+irm https://get.viberails.io/install.ps1 | iex
 
 # Initialize your team (opens browser for OAuth)
 viberails init-team
@@ -116,15 +128,15 @@ viberails configure --fail-open false
 
 ## Commands Reference
 
-| Command | Description |
-|---------|-------------|
-| `init-team` | Create a new team via OAuth |
-| `join-team <URL>` | Join an existing team |
-| `install` | Install hooks for detected AI tools |
-| `uninstall` | Remove hooks from AI tools |
-| `list` | Show installed hooks |
-| `configure` | Modify settings |
-| `show-config` | Display current configuration |
+| Command           | Description                         |
+| ----------------- | ----------------------------------- |
+| `init-team`       | Create a new team via OAuth         |
+| `join-team <URL>` | Join an existing team               |
+| `install`         | Install hooks for detected AI tools |
+| `uninstall`       | Remove hooks from AI tools          |
+| `list`            | Show installed hooks                |
+| `configure`       | Modify settings                     |
+| `show-config`     | Display current configuration       |
 
 ## Architecture
 
@@ -189,7 +201,7 @@ cargo build --release
 
 ## Requirements
 
-- macOS or Linux
+- Windows, macOS, or Linux
 - One or more supported AI coding tools installed
 - Internet connection for team features (or use local-only mode)
 
