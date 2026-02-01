@@ -267,6 +267,8 @@ pub fn login(args: &LoginArgs) -> Result<()> {
 fn print_success_message(org_name: &str, oid: &str, webhook_url: &str) {
     let join_curl = get_embedded_default("join_team_command");
     let join_command = format!("{join_curl} {webhook_url}");
+    let join_curl_windows = get_embedded_default("join_team_command_windows");
+    let join_command_windows = join_curl_windows.replace("{URL}", webhook_url);
     let team_url = format!("https://app.limacharlie.io/viberails/teams/{oid}");
 
     println!();
@@ -281,7 +283,11 @@ fn print_success_message(org_name: &str, oid: &str, webhook_url: &str) {
     println!();
     println!("  {} Add other machines to this team:", "→".blue());
     println!();
+    println!("  {}", "Linux/macOS:".dimmed());
     println!("    {}", join_command.cyan());
+    println!();
+    println!("  {}", "Windows (PowerShell):".dimmed());
+    println!("    {}", join_command_windows.cyan());
     println!();
     println!("  {}", "─".repeat(60).as_str().dimmed());
     println!();

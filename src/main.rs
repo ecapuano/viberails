@@ -10,6 +10,7 @@ mod upgrade;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use log::warn;
 
 use crate::{
     common::{PROJECT_NAME, PROJECT_VERSION},
@@ -18,7 +19,7 @@ use crate::{
     logging::Logging,
     oauth::{LoginArgs, login::login},
     providers::Providers,
-    upgrade::upgrade,
+    upgrade::{poll_upgrade, upgrade},
 };
 
 #[derive(Parser)]
@@ -98,7 +99,7 @@ fn main() -> Result<()> {
 
     init_logging(args.verbose)?;
 
-    match args.command {
+    let ret = match args.command {
         Command::Install => install(),
         Command::Uninstall => uninstall(),
         Command::List => {
@@ -117,5 +118,14 @@ fn main() -> Result<()> {
         Command::CodexCallback => hook(Providers::Codex),
         Command::OpencodeCallback => hook(Providers::OpenCode),
         Command::ClawdbotCallback => hook(Providers::Clawdbot),
+    };
+
+    //
+    // This'll try to upgrade every x hours on exit
+    //
+    if let Err(e) = poll_upgrade() {
+        warn!("upgrade failure: {e}");
     }
+
+    ret
 }
