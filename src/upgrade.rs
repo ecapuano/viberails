@@ -349,7 +349,7 @@ pub fn poll_upgrade() -> Result<()> {
         // time to try to upgrade
         //
         info!("time to upgrade");
-        upgrade()?;
+        upgrade(true)?;
     } else {
         previous_upgrade_cleanup();
     }
@@ -357,7 +357,7 @@ pub fn poll_upgrade() -> Result<()> {
     Ok(())
 }
 
-pub fn upgrade() -> Result<()> {
+pub fn upgrade(quiet: bool) -> Result<()> {
     info!("Upgrading");
 
     previous_upgrade_cleanup();
@@ -379,11 +379,15 @@ pub fn upgrade() -> Result<()> {
         info!("spawning upgrade process");
         spawn_upgrade()?;
     } else if let Some(release) = self_upgrade()? {
-        let msg = format!("Successfully upgraded to {}", release.version).green();
-        println!("{msg}");
+        if !quiet {
+            let msg = format!("Successfully upgraded to {}", release.version).green();
+            println!("{msg}");
+        }
     } else {
-        let msg = format!("Already on latest version {PROJECT_VERSION}").green();
-        println!("{msg}");
+        if !quiet {
+            let msg = format!("Already on latest version {PROJECT_VERSION}").green();
+            println!("{msg}");
+        }
     }
 
     Ok(())
