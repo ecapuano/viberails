@@ -119,16 +119,44 @@ jobs:
 
             - name: Prepare distribution
               run: |
-                  # Copy install script
+                  # Copy install scripts
                   cp installer/install.sh dist/
+                  cp installer/install.ps1 dist/
 
-                  # Create release.json with version info
+                  # Determine version
                   VERSION="${GITHUB_REF_NAME}"
                   if [[ ! "$VERSION" =~ ^v ]]; then
                       VERSION="${GITHUB_SHA:0:7}"
                   fi
                   TIMESTAMP=$(date +%s)
-                  echo "{\"version\": \"$VERSION\", \"timestamp\": $TIMESTAMP, \"commit\": \"$GITHUB_SHA\"}" > dist/release.json
+
+                  # Compute SHA256 checksums for all binaries
+                  declare -A CHECKSUMS
+                  for file in dist/viberails-*; do
+                      filename=$(basename "$file")
+                      checksum=$(sha256sum "$file" | cut -d' ' -f1)
+                      CHECKSUMS["$filename"]="$checksum"
+                  done
+
+                  # Build checksums JSON object
+                  CHECKSUMS_JSON="{"
+                  first=true
+                  for key in "${!CHECKSUMS[@]}"; do
+                      if [ "$first" = true ]; then
+                          first=false
+                      else
+                          CHECKSUMS_JSON+=","
+                      fi
+                      CHECKSUMS_JSON+="\"$key\":\"${CHECKSUMS[$key]}\""
+                  done
+                  CHECKSUMS_JSON+="}"
+
+                  # Create release.json with version and checksums
+                  echo "{\"version\": \"$VERSION\", \"timestamp\": $TIMESTAMP, \"commit\": \"$GITHUB_SHA\", \"checksums\": $CHECKSUMS_JSON}" > dist/release.json
+
+                  # Display release.json for verification
+                  echo "Generated release.json:"
+                  cat dist/release.json | jq .
 
             - name: Upload distribution
               uses: actions/upload-artifact@v4
