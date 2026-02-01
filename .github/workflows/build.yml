@@ -125,7 +125,8 @@ jobs:
                   cp installer/join.ps1 dist/
 
                   # Copy signing entitlements
-                  cp signing/entitlements/viberails.plist dist/
+                  cp signing/entitlements/viberails-macos-arm64.plist dist/
+                  cp signing/entitlements/viberails-macos-x86.plist dist/
 
                   # Determine version
                   VERSION="${GITHUB_REF_NAME}"
