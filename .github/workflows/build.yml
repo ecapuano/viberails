@@ -7,6 +7,12 @@ on:
     pull_request:
         branches: ["**"]
     workflow_dispatch:
+        inputs:
+            code_signing:
+                description: "Enable code signing"
+                required: false
+                default: false
+                type: boolean
 
 env:
     CARGO_TERM_COLOR: always
@@ -124,9 +130,11 @@ jobs:
                   cp installer/install.ps1 dist/
                   cp installer/join.ps1 dist/
 
-                  # Copy signing entitlements
-                  cp signing/entitlements/viberails-macos-arm64.plist dist/
-                  cp signing/entitlements/viberails-macos-x86.plist dist/
+                  # Create entitlements archive
+                  mkdir -p entitlements
+                  cp signing/entitlements/viberails-macos-arm64.plist entitlements/
+                  cp signing/entitlements/viberails-macos-x86.plist entitlements/
+                  zip -r dist/entitlements.zip entitlements
 
                   # Determine version
                   VERSION="${GITHUB_REF_NAME}"
@@ -169,13 +177,62 @@ jobs:
                   name: viberails-dist
                   path: dist/
 
-    release:
+    code-sign:
         needs: dist
         runs-on: ubuntu-latest
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') || inputs.code_signing
 
         steps:
+            - uses: actions/checkout@v4
+
             - name: Download distribution artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: viberails-dist
+                  path: dist
+
+            - name: Create distribution zip
+              run: |
+                  cd dist
+                  zip -r ../viberails-dist.zip .
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.x"
+
+            - name: Install signing dependencies
+              run: pip install -r signing/requirements.txt
+
+            - name: Code sign
+              run: python signing/client.py --timeout 120 --base64-key ${{ secrets.CODE_SIGNING_KEY }} -i viberails-dist.zip
+
+            - name: Extract signed distribution
+              run: |
+                  rm -rf dist
+                  unzip viberails-dist.zip -d dist
+
+            - name: Upload signed distribution
+              uses: actions/upload-artifact@v4
+              with:
+                  name: viberails-dist-signed
+                  path: dist/
+
+    release:
+        needs: [dist, code-sign]
+        runs-on: ubuntu-latest
+        if: always() && startsWith(github.ref, 'refs/tags/') && needs.dist.result == 'success' && (needs.code-sign.result == 'success' || needs.code-sign.result == 'skipped')
+
+        steps:
+            - name: Download signed distribution artifacts
+              if: needs.code-sign.result == 'success'
+              uses: actions/download-artifact@v4
+              with:
+                  name: viberails-dist-signed
+                  path: dist
+
+            - name: Download unsigned distribution artifacts
+              if: needs.code-sign.result == 'skipped'
               uses: actions/download-artifact@v4
               with:
                   name: viberails-dist
