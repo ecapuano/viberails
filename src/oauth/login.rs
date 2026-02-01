@@ -208,20 +208,20 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     let team_url = format!("https://app.limacharlie.io/viberails/teams/{}", config.org.oid);
 
     println!();
-    println!("  {}", "═".repeat(60).dimmed());
+    println!("  {}", "═".repeat(60).as_str().dimmed());
     println!();
     println!("  {} Setup complete!", "✓".green().bold());
     println!();
     println!("  Team: {}", config.org.name.cyan().bold());
     println!("  View: {}", team_url.cyan());
     println!();
-    println!("  {}", "─".repeat(60).dimmed());
+    println!("  {}", "─".repeat(60).as_str().dimmed());
     println!();
     println!("  {} Add other machines to this team:", "→".blue());
     println!();
     println!("    {}", join_command.cyan());
     println!();
-    println!("  {}", "─".repeat(60).dimmed());
+    println!("  {}", "─".repeat(60).as_str().dimmed());
     println!();
     println!(
         "  Powered by {} {}",
@@ -248,7 +248,7 @@ pub fn login(args: &LoginArgs) -> Result<()> {
         "retained for 1 year unless you destroy the Organization.".dimmed()
     );
     println!();
-    println!("  {}", "═".repeat(60).dimmed());
+    println!("  {}", "═".repeat(60).as_str().dimmed());
     println!();
 
     Ok(())
