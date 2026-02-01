@@ -1,7 +1,7 @@
 [package]
 name = "viberails"
 version = "0.0.1"  # ignored ( using the git tag )
-edition = "2024"
+edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
