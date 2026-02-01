@@ -79,6 +79,23 @@ struct HiveRecordUserMetaData {
     enabled: bool,
 }
 
+/// D&R Rule data structure for the dr-general hive
+#[derive(Serialize)]
+struct DRRuleData {
+    detect: serde_json::Value,
+    respond: Vec<serde_json::Value>,
+}
+
+/// Builder for creating D&R rules
+#[derive(Builder)]
+pub struct DRRule<'a> {
+    token: &'a str,
+    oid: &'a str,
+    name: &'a str,
+    detect: serde_json::Value,
+    respond: Vec<serde_json::Value>,
+}
+
 #[derive(Serialize)]
 struct WebhookAdapterData<'a> {
     sensor_type: &'a str,
@@ -445,6 +462,55 @@ impl WebhookAdapter<'_> {
             let error_body = res.as_str().unwrap_or("Unknown error");
             anyhow::bail!(
                 "Webhook adapter creation failed with status {}: {}",
+                res.status_code,
+                error_body
+            );
+        }
+
+        Ok(())
+    }
+}
+
+impl DRRule<'_> {
+    pub fn create(&self) -> Result<()> {
+        let url = format!(
+            "{LC_API_URL}/hive/dr-general/{}/{}/data",
+            self.oid, self.name
+        );
+
+        let bearer = format!("Bearer {}", self.token);
+
+        let data = DRRuleData {
+            detect: self.detect.clone(),
+            respond: self.respond.clone(),
+        };
+
+        let usr_mtd = HiveRecordUserMetaData { enabled: true };
+
+        let usr_mtd_json =
+            serde_json::to_string(&usr_mtd).context("Failed to serialize D&R rule metadata")?;
+
+        let data_json =
+            serde_json::to_string(&data).context("Failed to serialize D&R rule data")?;
+        let body = format!(
+            "data={}&usr_mtd={}",
+            urlencoding::encode(&data_json),
+            urlencoding::encode(&usr_mtd_json)
+        );
+
+        let res = minreq::post(&url)
+            .with_timeout(REQUEST_TIMEOUT_SECS)
+            .with_header("User-Agent", user_agent())
+            .with_header("Authorization", bearer)
+            .with_header("Content-Type", "application/x-www-form-urlencoded")
+            .with_body(body)
+            .send()
+            .with_context(|| format!("Failed to create D&R rule at {url}"))?;
+
+        if res.status_code >= 400 {
+            let error_body = res.as_str().unwrap_or("Unknown error");
+            anyhow::bail!(
+                "D&R rule creation failed with status {}: {}",
                 res.status_code,
                 error_body
             );
