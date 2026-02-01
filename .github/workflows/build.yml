@@ -119,6 +119,7 @@ jobs:
 
     dist:
         needs: build
+        if: always() && needs.build.result == 'success'
         runs-on: ubuntu-latest
 
         steps:
@@ -187,7 +188,7 @@ jobs:
     code-sign:
         needs: dist
         runs-on: ubuntu-latest
-        if: startsWith(github.ref, 'refs/tags/') || inputs.code_signing
+        if: always() && needs.dist.result == 'success' && (startsWith(github.ref, 'refs/tags/') || inputs.code_signing == true)
 
         steps:
             - uses: actions/checkout@v4
