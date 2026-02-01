@@ -50,6 +50,7 @@ pub fn upgrade() -> Result<()> {
 
     let mut fd = fs::OpenOptions::new()
         .create(true)
+        .truncate(true)
         .write(true)
         .open(&tmp_file)
         .with_context(|| format!("Unable to open {} for writing", tmp_file.display()))?;
@@ -57,22 +58,16 @@ pub fn upgrade() -> Result<()> {
     info!("Downloading: {url}");
 
     let res = minreq::get(&url)
-        .send_lazy()
-        .with_context(|| "{url} failed")?;
+        .send()
+        .with_context(|| format!("{url} failed"))?;
 
     if !(200..300).contains(&res.status_code) {
         let status_str = StatusCode::from(res.status_code).default_reason_phrase();
         bail!("{url} returned {} ({})", res.status_code, status_str);
     }
 
-    for bytes_reader in res {
-        let Ok((bytes, _)) = bytes_reader else {
-            bail!("read failure while downloading {}", url);
-        };
-
-        fd.write_all(&[bytes])?;
-        fd.flush()?;
-    }
+    fd.write_all(res.as_bytes())?;
+    fd.flush()?;
 
     drop(fd);
 

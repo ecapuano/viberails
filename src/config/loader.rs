@@ -155,13 +155,20 @@ impl Config {
         let config_dir = project_config_dir()?;
         let config_file = config_dir.join("config.json");
 
-        if config_file.exists() {
-            Config::load_existing(&config_file)
-        } else {
-            //
-            // doesn't exist yet
-            //
-            Ok(Config::create_new())
+        // Try to load existing config, create new one if file doesn't exist
+        // This avoids TOCTOU race between exists() check and read
+        match Config::load_existing(&config_file) {
+            Ok(config) => Ok(config),
+            Err(e) => {
+                // Check if the error is due to file not existing
+                if config_file.exists() {
+                    // File exists but we couldn't load it - propagate the error
+                    Err(e)
+                } else {
+                    // File doesn't exist - create new config
+                    Ok(Config::create_new())
+                }
+            }
         }
     }
 }

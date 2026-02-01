@@ -237,7 +237,11 @@ where
 {
     let url = format!("{LC_API_URL}/orgs/new");
     let bearer = format!("Bearer {}", token.as_ref());
-    let body = format!("loc={}&name={}&template=", location.as_ref(), name.as_ref());
+    let body = format!(
+        "loc={}&name={}&template=",
+        urlencoding::encode(location.as_ref()),
+        urlencoding::encode(name.as_ref())
+    );
 
     let res = minreq::post(&url)
         .with_timeout(REQUEST_TIMEOUT_SECS)
@@ -289,7 +293,11 @@ where
     let url = format!("{LC_API_URL}/installationkeys/{}", oid.as_ref());
     let bearer = format!("Bearer {}", token.as_ref());
 
-    let body = format!("tags={PROJECT_NAME}&desc={desc}");
+    let body = format!(
+        "tags={}&desc={}",
+        urlencoding::encode(PROJECT_NAME),
+        urlencoding::encode(desc)
+    );
 
     let res = minreq::post(&url)
         .with_timeout(REQUEST_TIMEOUT_SECS)
@@ -354,7 +362,11 @@ impl WebhookAdapter<'_> {
 
         let data_json =
             serde_json::to_string(&data).context("Failed to serialize webhook adapter data")?;
-        let body = format!("data={data_json}&usr_mtd={usr_mtd_json}");
+        let body = format!(
+            "data={}&usr_mtd={}",
+            urlencoding::encode(&data_json),
+            urlencoding::encode(&usr_mtd_json)
+        );
 
         let res = minreq::post(&url)
             .with_timeout(REQUEST_TIMEOUT_SECS)

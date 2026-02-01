@@ -712,16 +712,29 @@ fn success_html() -> String {
 
 /// Generate MFA HTML page with TOTP input form
 fn mfa_html(factor_name: &str) -> String {
+    // HTML-escape the factor name to prevent XSS
+    let escaped_name = html_escape(factor_name);
     OAuthAssets::get("mfa.html").map_or_else(
-        || format!("MFA required. Enter the 6-digit code from {factor_name}."),
-        |file| String::from_utf8_lossy(&file.data).replace("{{FACTOR_NAME}}", factor_name),
+        || format!("MFA required. Enter the 6-digit code from {escaped_name}."),
+        |file| String::from_utf8_lossy(&file.data).replace("{{FACTOR_NAME}}", &escaped_name),
     )
 }
 
 /// Generate error HTML page
 fn error_html(error_msg: &str) -> String {
+    // HTML-escape the error message to prevent XSS
+    let escaped_msg = html_escape(error_msg);
     OAuthAssets::get("error.html").map_or_else(
-        || format!("Authentication failed: {error_msg}"),
-        |file| String::from_utf8_lossy(&file.data).replace("{{ERROR_MESSAGE}}", error_msg),
+        || format!("Authentication failed: {escaped_msg}"),
+        |file| String::from_utf8_lossy(&file.data).replace("{{ERROR_MESSAGE}}", &escaped_msg),
     )
+}
+
+/// Escape HTML special characters to prevent XSS
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#x27;")
 }

@@ -157,7 +157,7 @@ pub trait LLmProviderTrait {
 
         let mut line = String::new();
 
-        info!("Wating for input");
+        info!("Waiting for input");
 
         // that's a fatal error
         let len = reader
@@ -198,6 +198,10 @@ pub trait LLmProviderTrait {
             } else {
                 info!("audit_prompts disabled, skipping cloud notification");
             }
+
+            // Always write an approve response for non-tool-use events
+            // The AI tool may be waiting for a response on stdout
+            self.write_decision(&mut writer, HookDecision::Approve)?;
         }
 
         let duration = start.elapsed().as_millis();

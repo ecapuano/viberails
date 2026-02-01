@@ -62,6 +62,7 @@ struct CloudRequest<'a> {
 pub struct CloudQuery<'a> {
     config: &'a Config,
     url: String,
+    secret: String,
     provider: Providers,
 }
 
@@ -110,11 +111,7 @@ impl<'a> CloudRequestMeta<'a> {
             None
         };
 
-        let username = if let Ok(username) = whoami::username() {
-            Some(username)
-        } else {
-            None
-        };
+        let username = whoami::username().ok();
 
         Ok(Self {
             ts,
@@ -141,15 +138,56 @@ impl<'a> CloudQuery<'a> {
 
         info!("Authorized for oid={}", config.org.oid);
 
-        let url = config.org.url.clone();
+        // Parse the URL and extract the secret from the last path segment
+        // URL format: https://{hooks_domain}/{oid}/{adapter_name}/{secret}
+        let (url, secret) = Self::extract_secret_from_url(&config.org.url)?;
 
         info!("Using url={url}");
 
         Ok(Self {
             config,
             url,
+            secret,
             provider,
         })
+    }
+
+    /// Extract the secret from the webhook URL and return the URL without it.
+    /// The secret is sent via header to avoid proxies logging it in access logs.
+    fn extract_secret_from_url(full_url: &str) -> Result<(String, String)> {
+        let mut parsed =
+            url::Url::parse(full_url).context("Invalid webhook URL format")?;
+
+        // Get path segments and extract the last one as the secret
+        let segments: Vec<&str> = parsed
+            .path_segments()
+            .context("Webhook URL has no path segments")?
+            .collect();
+
+        if segments.len() < 3 {
+            bail!(
+                "Invalid webhook URL format. Expected: https://hooks.domain/oid/name/secret"
+            );
+        }
+
+        // The last segment is the secret
+        let secret = segments
+            .last()
+            .context("No secret segment in URL")?
+            .to_string();
+
+        if secret.is_empty() {
+            bail!("Secret segment in webhook URL cannot be empty");
+        }
+
+        // Rebuild the path without the secret (we know segments.len() >= 3)
+        let path_without_secret: String = segments
+            .get(..segments.len().saturating_sub(1))
+            .unwrap_or(&[])
+            .join("/");
+        parsed.set_path(&format!("/{path_without_secret}"));
+
+        Ok((parsed.to_string(), secret))
     }
 
     pub fn notify(&self, data: Value) -> Result<()> {
@@ -169,6 +207,7 @@ impl<'a> CloudQuery<'a> {
 
         let ret = minreq::post(&self.url)
             .with_timeout(REQUEST_TIMEOUT_SECS)
+            .with_header("lc-secret", &self.secret)
             .with_json(&req)
             .context("Failed to serialize notification request")?
             .send();
@@ -200,6 +239,7 @@ impl<'a> CloudQuery<'a> {
 
         let res = minreq::post(&self.url)
             .with_timeout(REQUEST_TIMEOUT_SECS)
+            .with_header("lc-secret", &self.secret)
             .with_json(&req)
             .context("Failed to serialize authorization request")?
             .send()
