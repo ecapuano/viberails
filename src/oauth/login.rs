@@ -241,7 +241,11 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     );
     println!(
         "  {}",
-        "completely free. Only limitation is over global throughput.".dimmed()
+        "completely free. Only limitation is over global throughput. Data is".dimmed()
+    );
+    println!(
+        "  {}",
+        "retained for 1 year unless you destroy the Organization.".dimmed()
     );
     println!();
     println!("  {}", "═".repeat(60).dimmed());
