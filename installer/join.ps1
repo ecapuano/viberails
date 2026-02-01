@@ -1,10 +1,10 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Installs viberails on Windows.
+    Joins a viberails team on Windows.
 
 .EXAMPLE
-    irm https://get.viberails.io/install.ps1 | iex
+    $u="https://..."; irm https://get.viberails.io/join.ps1 | iex
 #>
 
 $ErrorActionPreference = "Stop"
@@ -68,11 +68,17 @@ function Get-Binary {
 }
 
 # Main
+if (-not $u) {
+    Write-Error "Variable `$u is required"
+    Write-Host "Usage: `$u=`"<team-url>`"; irm https://get.viberails.io/join.ps1 | iex"
+    exit 1
+}
+
 $download = Get-Binary
 
 try {
     & $download.TmpFile -V
-    & $download.TmpFile init-team
+    & $download.TmpFile join $u
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     & $download.TmpFile install
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -206,7 +206,7 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     let join_curl = get_embedded_default("join_team_command");
     let join_command = format!("{} {}", join_curl, config.org.url);
     let join_curl_windows = get_embedded_default("join_team_command_windows");
-    let join_command_windows = format!("{} \"{}\"", join_curl_windows, config.org.url);
+    let join_command_windows = join_curl_windows.replace("{URL}", &config.org.url);
     let team_url = format!(
         "https://app.limacharlie.io/viberails/teams/{}",
         config.org.oid
