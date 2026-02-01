@@ -175,10 +175,6 @@ struct MfaSession {
 
 #[derive(clap::Args)]
 pub struct LoginArgs {
-    /// OAuth provider to use
-    #[arg(long, short, default_value = "google")]
-    pub provider: OAuthProvider,
-
     /// Print the URL instead of opening a browser
     #[arg(long)]
     pub no_browser: bool,
@@ -198,21 +194,22 @@ pub struct LoginArgs {
 /// 5. Exchanges the code for Firebase tokens
 ///
 /// # Arguments
-/// * `config` - Configuration for the authorization flow
+/// * `provider` - The OAuth provider to use for authentication
+/// * `args` - Additional configuration for the authorization flow
 ///
 /// # Returns
 /// * `Ok(OAuthTokens)` - The OAuth tokens on success
 /// * `Err` - An error if authorization fails
-pub fn authorize(config: &LoginArgs) -> Result<OAuthTokens> {
+pub fn authorize(provider: OAuthProvider, args: &LoginArgs) -> Result<OAuthTokens> {
     // Find a free port and start the callback server
     let port = find_free_port()?;
     let redirect_uri = format!("http://localhost:{port}/callback");
 
     println!("OAuth callback server started on port {port}");
-    println!("Using OAuth provider: {}", config.provider.as_firebase_id());
+    println!("Using OAuth provider: {}", provider.as_firebase_id());
 
     // Get auth URI from Firebase first (we need session_id for the callback server)
-    let (session_id, auth_uri) = create_auth_uri(config.provider, &redirect_uri)?;
+    let (session_id, auth_uri) = create_auth_uri(provider, &redirect_uri)?;
 
     // Start the callback server in a separate thread
     let (tx, rx): (Sender<CallbackResult>, Receiver<CallbackResult>) = mpsc::channel();
@@ -220,13 +217,12 @@ pub fn authorize(config: &LoginArgs) -> Result<OAuthTokens> {
         .map_err(|e| anyhow!("Failed to start OAuth callback server: {e}"))?;
 
     let redirect_uri_clone = redirect_uri.clone();
-    let provider = config.provider;
     let server_handle = thread::spawn(move || {
         run_callback_server(&server, &tx, &redirect_uri_clone, provider, &session_id);
     });
 
     // Open browser or print URL
-    if config.no_browser {
+    if args.no_browser {
         println!("\nPlease visit this URL to authenticate:\n{auth_uri}\n");
     } else {
         println!("Opening browser for authentication...");
