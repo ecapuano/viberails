@@ -75,8 +75,10 @@ struct InstallationKeyResponse {
 }
 
 #[derive(Serialize)]
-struct HiveRecordUserMetaData {
+struct HiveRecordUserMetaData<'a> {
     enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tags: Option<Vec<&'a str>>,
 }
 
 /// D&R Rule data structure for the dr-general hive
@@ -436,6 +438,7 @@ impl WebhookAdapter<'_> {
 
         let usr_mtd = HiveRecordUserMetaData {
             enabled: self.enabled,
+            tags: None,
         };
 
         let usr_mtd_json =
@@ -485,7 +488,10 @@ impl DRRule<'_> {
             respond: self.respond.clone(),
         };
 
-        let usr_mtd = HiveRecordUserMetaData { enabled: true };
+        let usr_mtd = HiveRecordUserMetaData {
+            enabled: true,
+            tags: Some(vec!["viberails"]),
+        };
 
         let usr_mtd_json =
             serde_json::to_string(&usr_mtd).context("Failed to serialize D&R rule metadata")?;
@@ -493,7 +499,7 @@ impl DRRule<'_> {
         let data_json =
             serde_json::to_string(&data).context("Failed to serialize D&R rule data")?;
         let body = format!(
-            "data={}&usr_mtd={}&tags=viberails",
+            "data={}&usr_mtd={}",
             urlencoding::encode(&data_json),
             urlencoding::encode(&usr_mtd_json)
         );
