@@ -363,7 +363,6 @@ pub fn upgrade() -> Result<()> {
 
     // Acquire upgrade lock to prevent concurrent upgrades
     let Some(_lock) = UpgradeLock::acquire()? else {
-        println!("Another upgrade is already in progress");
         return Ok(());
     };
 
