@@ -205,7 +205,12 @@ pub fn login(args: &LoginArgs) -> Result<()> {
 
     let join_curl = get_embedded_default("join_team_command");
     let join_command = format!("{} {}", join_curl, config.org.url);
-    let team_url = format!("https://app.limacharlie.io/viberails/teams/{}", config.org.oid);
+    let join_curl_windows = get_embedded_default("join_team_command_windows");
+    let join_command_windows = format!("{} \"{}\"", join_curl_windows, config.org.url);
+    let team_url = format!(
+        "https://app.limacharlie.io/viberails/teams/{}",
+        config.org.oid
+    );
 
     println!();
     println!("  {}", "═".repeat(60).as_str().dimmed());
@@ -219,7 +224,11 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     println!();
     println!("  {} Add other machines to this team:", "→".blue());
     println!();
+    println!("  {}", "Linux/macOS:".dimmed());
     println!("    {}", join_command.cyan());
+    println!();
+    println!("  {}", "Windows (PowerShell):".dimmed());
+    println!("    {}", join_command_windows.cyan());
     println!();
     println!("  {}", "─".repeat(60).as_str().dimmed());
     println!();
@@ -229,7 +238,11 @@ pub fn login(args: &LoginArgs) -> Result<()> {
         "https://limacharlie.io".dimmed()
     );
     println!();
-    println!("  {} {}", "Terms of Service:".dimmed(), "https://app.limacharlie.io/tos".dimmed());
+    println!(
+        "  {} {}",
+        "Terms of Service:".dimmed(),
+        "https://app.limacharlie.io/tos".dimmed()
+    );
     println!();
     println!(
         "  {}",
