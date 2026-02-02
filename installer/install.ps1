@@ -72,9 +72,7 @@ $download = Get-Binary
 
 try {
     & $download.TmpFile -V
-    & $download.TmpFile init-team
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    & $download.TmpFile install
+    & $download.TmpFile
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 finally {
