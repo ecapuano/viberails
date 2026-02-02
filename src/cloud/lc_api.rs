@@ -433,7 +433,7 @@ impl WebhookAdapter<'_> {
 
         let usr_mtd = HiveRecordUserMetaData {
             enabled: self.enabled,
-            tags: None,
+            tags: Some(vec!["viberails", "lc:system"]),
         };
 
         let usr_mtd_json =
