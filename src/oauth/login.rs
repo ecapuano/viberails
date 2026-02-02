@@ -7,8 +7,8 @@ use log::info;
 
 use crate::{
     cloud::lc_api::{
-        DRRule, WebhookAdapter, create_installation_key, get_jwt_firebase, get_org_info,
-        get_org_urls, org_available, org_create, signup_user,
+        DRRule, UserOrg, WebhookAdapter, create_installation_key, get_jwt_firebase, get_org_info,
+        get_org_urls, get_user_orgs, org_available, org_create, signup_user,
     },
     common::PROJECT_NAME,
     config::{Config, LcOrg},
@@ -20,6 +20,19 @@ use crate::{
 struct ProviderOption {
     label: &'static str,
     provider: OAuthProvider,
+}
+
+/// Choice for team selection: create new or use existing
+#[derive(Debug, Clone)]
+enum TeamChoice {
+    CreateNew,
+    UseExisting { oid: String, name: String },
+}
+
+/// A selectable team option for the interactive menu
+struct TeamOption {
+    label: String,
+    choice: TeamChoice,
 }
 
 const ORG_CREATE_TIMEOUT: Duration = Duration::from_secs(120);
@@ -98,6 +111,37 @@ fn query_oauth_provider() -> Result<OAuthProvider> {
         .into_iter()
         .find(|o| o.label == selection)
         .map_or(OAuthProvider::Google, |o| o.provider))
+}
+
+/// Prompt user to select a team (create new or use existing)
+fn query_team_choice(orgs: Vec<UserOrg>) -> Result<TeamChoice> {
+    let mut options: Vec<TeamOption> = vec![TeamOption {
+        label: "Create a new team".to_string(),
+        choice: TeamChoice::CreateNew,
+    }];
+
+    // Add existing orgs
+    for org in orgs {
+        let name = org.name.unwrap_or_else(|| org.oid.clone());
+        options.push(TeamOption {
+            label: name.clone(),
+            choice: TeamChoice::UseExisting { oid: org.oid, name },
+        });
+    }
+
+    let labels: Vec<String> = options.iter().map(|o| o.label.clone()).collect();
+    let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+
+    let selection = Select::new("Select a team:", label_refs)
+        .with_starting_cursor(0)
+        .with_help_message("Use ↑↓ to navigate, Enter to select")
+        .prompt()
+        .context("Failed to read team selection")?;
+
+    Ok(options
+        .into_iter()
+        .find(|o| o.label == selection)
+        .map_or(TeamChoice::CreateNew, |o| o.choice))
 }
 
 fn wait_for_org(oid: &str, token: &str) -> Result<String> {
@@ -396,26 +440,49 @@ pub fn login(args: &LoginArgs) -> Result<()> {
         println!("Using team '{}'.", org_info.name);
         (existing_oid.clone(), org_info.name)
     } else {
-        // Creating a new org - get a generic JWT first
-        println!("Requesting access token...");
-        info!("requesting a JWT token");
-        let jwt = get_jwt_firebase("-", &login.id_token).context("Unable to get JWT from FB TOKEN")?;
-        info!("received token");
-        println!("Access token received.");
-        // Ask the user for the org name
-        let org_name = query_org_name(&jwt)?;
+        // Fetch user's existing orgs and show selection menu
+        println!("Loading your teams...");
 
-        // It's an optional parameter
-        let location = ORG_DEFAULT_LOCATION;
+        let team_choice = match get_user_orgs(&login.id_token) {
+            Ok(orgs) if !orgs.is_empty() => query_team_choice(orgs)?,
+            Ok(_) => {
+                // No existing orgs - go directly to create
+                info!("User has no existing orgs");
+                TeamChoice::CreateNew
+            }
+            Err(e) => {
+                // API failed - fall back to create flow
+                log::warn!("Failed to fetch user orgs: {e}");
+                TeamChoice::CreateNew
+            }
+        };
 
-        // Creating the organization
-        println!("Creating team '{org_name}'...");
-        info!("Creating {org_name} org in {location}");
-        let oid =
-            org_create(&jwt, &org_name, location).context("Unable to create organization")?;
-        info!("Org created oid={oid}");
-        println!("Team created.");
-        (oid, org_name)
+        match team_choice {
+            TeamChoice::CreateNew => {
+                println!("Requesting access token...");
+                info!("requesting a JWT token");
+                let jwt = get_jwt_firebase("-", &login.id_token)
+                    .context("Unable to get JWT from FB TOKEN")?;
+                info!("received token");
+                println!("Access token received.");
+
+                let org_name = query_org_name(&jwt)?;
+                let location = ORG_DEFAULT_LOCATION;
+
+                println!("Creating team '{org_name}'...");
+                info!("Creating {org_name} org in {location}");
+                let oid = org_create(&jwt, &org_name, location)
+                    .context("Unable to create organization")?;
+                info!("Org created oid={oid}");
+                println!("Team created.");
+                (oid, org_name)
+            }
+            TeamChoice::UseExisting { oid, name } => {
+                println!("Using existing team '{name}'...");
+                info!("Using existing org oid={oid}");
+                (oid, name)
+            }
+        }
     };
 
     //

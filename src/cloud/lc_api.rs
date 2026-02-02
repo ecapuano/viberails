@@ -333,6 +333,52 @@ where
     Ok(resp)
 }
 
+/// Organization with optional name from user/orgs endpoint
+#[derive(Debug, Deserialize)]
+pub struct UserOrg {
+    pub oid: String,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct UserOrgsResponse {
+    orgs: Vec<UserOrg>,
+}
+
+/// Get all organizations accessible to the current user.
+/// Uses a minimal JWT (oid="-") to list orgs without requiring a specific org context.
+pub fn get_user_orgs<T>(fb_token: T) -> Result<Vec<UserOrg>>
+where
+    T: AsRef<str>,
+{
+    // Get minimal JWT with oid="-" (no specific org)
+    let jwt = get_jwt_firebase("-", fb_token)?;
+
+    let url = format!("{LC_API_URL}/user/orgs?with_names=true");
+    let bearer = format!("Bearer {jwt}");
+
+    let res = minreq::get(&url)
+        .with_timeout(REQUEST_TIMEOUT_SECS)
+        .with_header("User-Agent", user_agent())
+        .with_header("Authorization", bearer)
+        .send()
+        .with_context(|| format!("Failed to get user orgs from {url}"))?;
+
+    if res.status_code >= 400 {
+        let error_body = res.as_str().unwrap_or("Unknown error");
+        anyhow::bail!(
+            "Get user orgs failed with status {}: {}",
+            res.status_code,
+            error_body
+        );
+    }
+
+    let resp: UserOrgsResponse = res
+        .json()
+        .context("Unable to deserialize user orgs response")?;
+    Ok(resp.orgs)
+}
+
 pub fn get_org_urls<O>(oid: O) -> Result<OrgUrls>
 where
     O: AsRef<str>,
