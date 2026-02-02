@@ -101,13 +101,19 @@ impl OpenClaw {
     }
 
     /// Generate the plugin manifest JSON content.
+    /// Ref: <https://docs.openclaw.ai/plugin> for manifest format.
     pub(crate) fn generate_plugin_manifest() -> String {
         serde_json::to_string_pretty(&json!({
             "id": PROJECT_NAME,
             "name": format!("{} Security Plugin", PROJECT_NAME),
             "version": "1.0.0",
             "description": format!("{} security and compliance monitoring for tool calls", PROJECT_NAME),
-            "main": "index.ts"
+            "main": "index.ts",
+            "configSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {}
+            }
         }))
         .unwrap_or_default()
     }

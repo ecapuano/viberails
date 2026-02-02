@@ -196,16 +196,21 @@ fn test_generate_plugin_manifest_contains_required_fields() {
     // Parse as JSON
     let json: serde_json::Value = serde_json::from_str(&manifest).unwrap();
 
-    // Check required fields
+    // Check required fields per OpenClaw plugin spec
     assert!(json.get("id").is_some());
     assert!(json.get("name").is_some());
     assert!(json.get("version").is_some());
     assert!(json.get("description").is_some());
     assert!(json.get("main").is_some());
+    assert!(json.get("configSchema").is_some(), "configSchema is required by OpenClaw");
 
     // Check PROJECT_NAME is used
     assert_eq!(json["id"].as_str().unwrap(), PROJECT_NAME);
     assert_eq!(json["main"].as_str().unwrap(), "index.ts");
+
+    // Verify configSchema structure
+    let config_schema = &json["configSchema"];
+    assert_eq!(config_schema["type"].as_str().unwrap(), "object");
 }
 
 #[test]
