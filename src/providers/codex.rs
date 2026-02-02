@@ -65,7 +65,7 @@ impl ProviderFactory for CodexDiscovery {
 }
 
 pub struct Codex {
-    command_line: String,
+    program_path: String,
     config_file: PathBuf,
 }
 
@@ -83,10 +83,10 @@ impl Codex {
             .ok_or_else(|| anyhow!("Unable to determine Codex config directory"))?;
 
         let config_file = codex_dir.join("config.toml");
-        let command_line = format!("{} codex-callback", program.as_ref().display());
+        let program_path = program.as_ref().display().to_string();
 
         Ok(Self {
-            command_line,
+            program_path,
             config_file,
         })
     }
@@ -124,7 +124,7 @@ impl Codex {
         if let Some(existing) = notify_entry {
             // Check if it's an array and if our command is already there
             if let Some(arr) = existing.as_array()
-                && arr.first().and_then(|v| v.as_str()) == Some(&self.command_line)
+                && arr.first().and_then(|v| v.as_str()) == Some(&self.program_path)
             {
                 warn!(
                     "notify hook already exists in {}",
@@ -140,10 +140,13 @@ impl Codex {
             );
         }
 
-        // Set notify to our command
+        // Set notify to our command as separate array elements
         toml.insert(
             "notify".to_string(),
-            Value::Array(vec![Value::String(self.command_line.clone())]),
+            Value::Array(vec![
+                Value::String(self.program_path.clone()),
+                Value::String("codex-callback".to_string()),
+            ]),
         );
 
         Ok(())
@@ -250,12 +253,17 @@ impl LLmProviderTrait for Codex {
 
         if let Some(notify) = toml.get("notify")
             && let Some(arr) = notify.as_array()
-            && let Some(cmd) = arr.first().and_then(|v| v.as_str())
+            && !arr.is_empty()
         {
+            let command = arr
+                .iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join(" ");
             entries.push(HookEntry {
                 hook_type: "notify".to_string(),
                 matcher: "*".to_string(),
-                command: cmd.to_string(),
+                command,
             });
         }
 

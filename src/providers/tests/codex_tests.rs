@@ -17,10 +17,6 @@ fn test_exe_path() -> String {
     format!("/usr/bin/{EXECUTABLE_NAME}")
 }
 
-fn test_command() -> String {
-    format!("/usr/bin/{EXECUTABLE_NAME} codex-callback")
-}
-
 #[test]
 fn test_install_into_empty_toml() {
     let codex = make_codex("/usr/bin/test-program");
@@ -29,11 +25,9 @@ fn test_install_into_empty_toml() {
     codex.install_into("notify", &mut toml).unwrap();
 
     let notify = toml.get("notify").unwrap().as_array().unwrap();
-    assert_eq!(notify.len(), 1);
-    assert_eq!(
-        notify[0].as_str().unwrap(),
-        "/usr/bin/test-program codex-callback"
-    );
+    assert_eq!(notify.len(), 2);
+    assert_eq!(notify[0].as_str().unwrap(), "/usr/bin/test-program");
+    assert_eq!(notify[1].as_str().unwrap(), "codex-callback");
 }
 
 #[test]
@@ -54,7 +48,7 @@ temperature = 0.7
 
     // Notify should be added
     let notify = toml.get("notify").unwrap().as_array().unwrap();
-    assert_eq!(notify.len(), 1);
+    assert_eq!(notify.len(), 2);
 }
 
 #[test]
@@ -62,14 +56,14 @@ fn test_install_into_skips_if_already_installed() {
     let codex = make_codex("/usr/bin/test-program");
     let mut toml = parse_toml(
         r#"
-notify = ["/usr/bin/test-program codex-callback"]
+notify = ["/usr/bin/test-program", "codex-callback"]
 "#,
     );
 
     codex.install_into("notify", &mut toml).unwrap();
 
     let notify = toml.get("notify").unwrap().as_array().unwrap();
-    assert_eq!(notify.len(), 1);
+    assert_eq!(notify.len(), 2);
 }
 
 #[test]
@@ -84,11 +78,9 @@ notify = ["/other/program", "arg1"]
     codex.install_into("notify", &mut toml).unwrap();
 
     let notify = toml.get("notify").unwrap().as_array().unwrap();
-    assert_eq!(notify.len(), 1);
-    assert_eq!(
-        notify[0].as_str().unwrap(),
-        "/usr/bin/test-program codex-callback"
-    );
+    assert_eq!(notify.len(), 2);
+    assert_eq!(notify[0].as_str().unwrap(), "/usr/bin/test-program");
+    assert_eq!(notify[1].as_str().unwrap(), "codex-callback");
 }
 
 #[test]
@@ -96,10 +88,10 @@ fn test_uninstall_from_removes_our_notify() {
     let codex = make_codex(test_exe_path());
     let mut toml = parse_toml(&format!(
         r#"
-notify = ["{cmd}"]
+notify = ["{exe}", "codex-callback"]
 model = "gpt-4"
 "#,
-        cmd = test_command()
+        exe = test_exe_path()
     ));
 
     codex.uninstall_from("notify", &mut toml);

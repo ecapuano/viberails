@@ -16,7 +16,7 @@ use log::warn;
 use crate::{
     common::{PROJECT_NAME, PROJECT_VERSION},
     config::{JoinTeamArgs, join_team, show_configuration},
-    hooks::{hook, install, list, uninstall},
+    hooks::{codex_hook, hook, install, list, uninstall},
     logging::Logging,
     oauth::{LoginArgs, login::login},
     providers::Providers,
@@ -75,7 +75,10 @@ enum Command {
 
     /// `OpenAI` Codex callback
     #[command(hide = true)]
-    CodexCallback,
+    CodexCallback {
+        /// JSON payload from Codex (passed as command line argument)
+        payload: String,
+    },
 
     /// `OpenCode` callback
     #[command(hide = true)]
@@ -212,7 +215,7 @@ fn main() -> Result<()> {
         Some(Command::ClaudeCallback) => hook(Providers::ClaudeCode),
         Some(Command::CursorCallback) => hook(Providers::Cursor),
         Some(Command::GeminiCallback) => hook(Providers::GeminiCli),
-        Some(Command::CodexCallback) => hook(Providers::Codex),
+        Some(Command::CodexCallback { payload }) => codex_hook(&payload),
         Some(Command::OpencodeCallback) => hook(Providers::OpenCode),
         Some(Command::OpenclawCallback) => hook(Providers::OpenClaw),
     };

@@ -1,5 +1,5 @@
 mod hook;
-pub use hook::hook;
+pub use hook::{codex_hook, hook};
 
 mod install;
 pub use install::binary_location;
