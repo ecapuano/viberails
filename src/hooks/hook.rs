@@ -6,8 +6,8 @@ use crate::{
     common::PROJECT_NAME,
     config::Config,
     providers::{
-        LLmProviderTrait, Providers, claude::Claude, clawdbot::Clawdbot, codex::Codex,
-        cursor::Cursor, gemini::Gemini, opencode::OpenCode,
+        LLmProviderTrait, Providers, claude::Claude, codex::Codex, cursor::Cursor,
+        gemini::Gemini, opencode::OpenCode, openclaw::OpenClaw,
     },
 };
 
@@ -31,6 +31,6 @@ pub fn hook(provider: Providers) -> Result<()> {
         Providers::GeminiCli => Gemini::new()?.io(&cloud, &config),
         Providers::Codex => Codex::new()?.io(&cloud, &config),
         Providers::OpenCode => OpenCode::new()?.io(&cloud, &config),
-        Providers::Clawdbot => Clawdbot::new()?.io(&cloud, &config),
+        Providers::OpenClaw => OpenClaw::new()?.io(&cloud, &config),
     }
 }

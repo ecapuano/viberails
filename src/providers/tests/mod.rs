@@ -1,9 +1,9 @@
 mod claude_tests;
-mod clawdbot_tests;
 mod codex_tests;
 mod cursor_tests;
 mod discovery_tests;
 mod gemini_tests;
 mod opencode_tests;
+mod openclaw_tests;
 mod registry_tests;
 mod selector_tests;

@@ -81,9 +81,9 @@ enum Command {
     #[command(hide = true)]
     OpencodeCallback,
 
-    /// Clawdbot/OpenClaw callback
+    /// `OpenClaw` callback
     #[command(hide = true)]
-    ClawdbotCallback,
+    OpenclawCallback,
 }
 
 fn init_logging(verbose: bool) -> Result<()> {
@@ -214,7 +214,7 @@ fn main() -> Result<()> {
         Some(Command::GeminiCallback) => hook(Providers::GeminiCli),
         Some(Command::CodexCallback) => hook(Providers::Codex),
         Some(Command::OpencodeCallback) => hook(Providers::OpenCode),
-        Some(Command::ClawdbotCallback) => hook(Providers::Clawdbot),
+        Some(Command::OpenclawCallback) => hook(Providers::OpenClaw),
     };
 
     //

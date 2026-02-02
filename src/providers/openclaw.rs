@@ -9,76 +9,48 @@ use crate::hooks::binary_location;
 use crate::providers::discovery::{DiscoveryResult, ProviderDiscovery, ProviderFactory};
 use crate::providers::{HookEntry, LLmProviderTrait};
 
-/// Clawdbot (now `OpenClaw`) uses a plugin system for tool interception.
+/// `OpenClaw` uses a plugin system for tool interception via the `before_tool_call` hook.
 /// We create a plugin in the extensions directory with a manifest and handler.
-/// Note: Event-stream hooks (HOOK.md with `events: ["command"]`) only cover slash
-/// commands like /new, /reset, /stop. For tool call interception, we need
-/// plugin hooks (`before_tool_call`, `after_tool_call`) which are registered
-/// programmatically through the plugin system.
-pub const CLAWDBOT_HOOKS: &[&str] = &["plugin"];
+/// Ref: <https://docs.openclaw.ai/plugin> and PR #6264 for `before_tool_call` hook.
+pub const OPENCLAW_HOOKS: &[&str] = &["plugin"];
 
-/// Discovery implementation for Clawdbot/OpenClaw.
-pub struct ClawdbotDiscovery;
+/// Discovery implementation for `OpenClaw`.
+pub struct OpenClawDiscovery;
 
-impl ClawdbotDiscovery {
-    /// Get the Clawdbot config directory and config file name.
-    /// Clawdbot has been renamed to `OpenClaw`, check both locations.
+impl OpenClawDiscovery {
+    /// Get the `OpenClaw` config directory and config file name.
     /// Returns (`directory_path`, `config_file_name`)
-    fn clawdbot_paths() -> Option<(PathBuf, &'static str)> {
-        dirs::home_dir().map(|h| {
-            let openclaw = h.join(".openclaw");
-            if openclaw.exists() {
-                return (openclaw, "openclaw.json");
-            }
-            let clawdbot = h.join(".clawdbot");
-            if clawdbot.exists() {
-                return (clawdbot, "clawdbot.json");
-            }
-            // Return openclaw as default for new installations
-            (openclaw, "openclaw.json")
-        })
+    fn openclaw_paths() -> Option<(PathBuf, &'static str)> {
+        dirs::home_dir().map(|h| (h.join(".openclaw"), "openclaw.json"))
     }
 
-    /// Get the Clawdbot config directory path.
-    fn clawdbot_dir() -> Option<PathBuf> {
-        Self::clawdbot_paths().map(|(dir, _)| dir)
+    /// Get the `OpenClaw` config directory path.
+    fn openclaw_dir() -> Option<PathBuf> {
+        Self::openclaw_paths().map(|(dir, _)| dir)
     }
 
-    /// Check if either clawdbot or openclaw directory exists
+    /// Check if openclaw directory exists
     fn is_detected() -> bool {
-        dirs::home_dir()
-            .is_some_and(|h| h.join(".openclaw").exists() || h.join(".clawdbot").exists())
-    }
-
-    /// Get all detected installation directories (for installing hooks in both if present)
-    fn all_detected_dirs() -> Vec<(PathBuf, &'static str)> {
-        let mut dirs = Vec::new();
-        if let Some(home) = dirs::home_dir() {
-            let openclaw = home.join(".openclaw");
-            if openclaw.exists() {
-                dirs.push((openclaw, "openclaw.json"));
-            }
-            let clawdbot = home.join(".clawdbot");
-            if clawdbot.exists() {
-                dirs.push((clawdbot, "clawdbot.json"));
-            }
-        }
-        dirs
+        dirs::home_dir().is_some_and(|h| h.join(".openclaw").exists())
     }
 }
 
-impl ProviderDiscovery for ClawdbotDiscovery {
+impl ProviderDiscovery for OpenClawDiscovery {
     fn id(&self) -> &'static str {
-        "clawdbot"
+        "openclaw"
     }
 
     fn display_name(&self) -> &'static str {
-        "Clawdbot/OpenClaw"
+        "OpenClaw"
     }
 
     fn discover(&self) -> DiscoveryResult {
         let detected = Self::is_detected();
-        let detected_path = if detected { Self::clawdbot_dir() } else { None };
+        let detected_path = if detected {
+            Self::openclaw_dir()
+        } else {
+            None
+        };
 
         DiscoveryResult {
             id: self.id(),
@@ -86,29 +58,29 @@ impl ProviderDiscovery for ClawdbotDiscovery {
             detected,
             detected_path,
             detection_hint: Some(
-                "Install Clawdbot/OpenClaw: npm install -g clawdbot or visit https://github.com/clawdbot/clawdbot".into(),
+                "Install OpenClaw: npm install -g openclaw or visit https://openclaw.ai".into(),
             ),
             hooks_installed: false, // Will be set by discover_with_hooks_check
         }
     }
 
     fn supported_hooks(&self) -> &'static [&'static str] {
-        CLAWDBOT_HOOKS
+        OPENCLAW_HOOKS
     }
 }
 
-impl ProviderFactory for ClawdbotDiscovery {
+impl ProviderFactory for OpenClawDiscovery {
     fn create(&self) -> Result<Box<dyn LLmProviderTrait>> {
-        Ok(Box::new(Clawdbot::new()?))
+        Ok(Box::new(OpenClaw::new()?))
     }
 }
 
-pub struct Clawdbot {
+pub struct OpenClaw {
     /// Path to the viberails binary
     binary_path: PathBuf,
 }
 
-impl Clawdbot {
+impl OpenClaw {
     pub fn new() -> Result<Self> {
         // Always use the installed binary location (~/.local/bin/viberails) rather than
         // current_exe(), so the hook command is consistent regardless of where viberails
@@ -123,14 +95,12 @@ impl Clawdbot {
         }
     }
 
-    /// Get the plugin directory path for a given installation directory.
+    /// Get the plugin directory path for the `OpenClaw` installation.
     fn plugin_dir(install_dir: &std::path::Path) -> PathBuf {
         install_dir.join("extensions").join(PROJECT_NAME)
     }
 
     /// Generate the plugin manifest JSON content.
-    /// Uses the appropriate manifest filename based on whether this is
-    /// `OpenClaw` (`openclaw.plugin.json`) or Clawdbot (`clawdbot.plugin.json`).
     pub(crate) fn generate_plugin_manifest() -> String {
         serde_json::to_string_pretty(&json!({
             "id": PROJECT_NAME,
@@ -142,47 +112,63 @@ impl Clawdbot {
         .unwrap_or_default()
     }
 
-    /// Generate the plugin index.ts content that registers tool call hooks.
-    /// This uses the plugin API to register `before_tool_call` hooks, which
-    /// intercept tool calls before they are executed (unlike event-stream
-    /// hooks which only cover slash commands).
+    /// Escape a string for safe embedding in JavaScript code.
+    /// Prevents injection attacks when embedding paths in generated TypeScript.
+    fn escape_js_string(s: &str) -> String {
+        s.replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n")
+            .replace('\r', "\\r")
+            .replace('$', "\\$") // Prevent template literal injection
+            .replace('`', "\\`") // Prevent backtick template strings
+    }
+
+    /// Generate the plugin index.ts content that registers the `before_tool_call` hook.
+    /// This uses the `OpenClaw` plugin API to register hooks that intercept tool calls
+    /// before they are executed.
+    /// Ref: PR #6264 for `before_tool_call` hook format.
     pub(crate) fn generate_plugin_index(&self) -> String {
-        let binary_path = self.binary_path.display();
+        let binary_path = Self::escape_js_string(&self.binary_path.display().to_string());
         format!(
             r#"import {{ spawnSync }} from "child_process";
 
 /**
- * {PROJECT_NAME} Plugin for OpenClaw/Clawdbot
+ * {PROJECT_NAME} Plugin for OpenClaw
  *
- * This plugin intercepts tool calls (exec, Read, Write, etc.) for security
- * and compliance monitoring. Unlike event-stream hooks (which only cover
- * slash commands like /new, /reset), plugin hooks can intercept actual
- * tool executions.
+ * This plugin intercepts tool calls via the before_tool_call hook for security
+ * and compliance monitoring.
+ * Ref: https://docs.openclaw.ai/plugin
  */
 
-interface ToolCallEvent {{
-  tool: string;
-  parameters: Record<string, unknown>;
-  sessionId?: string;
+/**
+ * OpenClaw before_tool_call event format (PR #6264)
+ */
+interface BeforeToolCallEvent {{
+  toolName: string;
+  params: Record<string, unknown>;
 }}
 
-interface ToolCallResult {{
-  allow: boolean;
-  reason?: string;
-  modifiedParameters?: Record<string, unknown>;
+/**
+ * Response format for before_tool_call hook
+ * Return {{ block: true, blockReason: "..." }} to block the tool call
+ * Return {{ params: modifiedParams }} to modify parameters
+ * Return undefined or the original event to allow
+ */
+interface BeforeToolCallResponse {{
+  block?: boolean;
+  blockReason?: string;
+  params?: Record<string, unknown>;
 }}
 
 interface PluginAPI {{
   registerHook(hookName: string, handler: (event: unknown) => unknown): void;
-  // Clawdbot uses addHook instead of registerHook
-  addHook?(hookName: string, handler: (event: unknown) => unknown): void;
 }}
 
-function callViberails(event: ToolCallEvent): ToolCallResult {{
+function callViberails(event: BeforeToolCallEvent): BeforeToolCallResponse | undefined {{
   const eventJson = JSON.stringify(event);
 
   try {{
-    const result = spawnSync("{binary_path}", ["clawdbot-callback"], {{
+    const result = spawnSync("{binary_path}", ["openclaw-callback"], {{
       input: eventJson,
       encoding: "utf-8",
       timeout: 30000, // 30 second timeout
@@ -190,12 +176,12 @@ function callViberails(event: ToolCallEvent): ToolCallResult {{
 
     if (result.error) {{
       console.error(`[{PROJECT_NAME}] Spawn error: ${{result.error.message}}`);
-      return {{ allow: true }}; // Fail open on spawn errors
+      return undefined; // Fail open on spawn errors
     }}
 
     if (result.status !== 0) {{
       console.error(`[{PROJECT_NAME}] Process exited with code ${{result.status}}: ${{result.stderr}}`);
-      return {{ allow: true }}; // Fail open on process errors
+      return undefined; // Fail open on process errors
     }}
 
     if (result.stdout?.trim()) {{
@@ -203,8 +189,8 @@ function callViberails(event: ToolCallEvent): ToolCallResult {{
         const response = JSON.parse(result.stdout.trim());
         if (response.decision === "block") {{
           return {{
-            allow: false,
-            reason: response.reason || "Blocked by {PROJECT_NAME} policy",
+            block: true,
+            blockReason: response.reason || "Blocked by {PROJECT_NAME} policy",
           }};
         }}
       }} catch (e) {{
@@ -212,53 +198,39 @@ function callViberails(event: ToolCallEvent): ToolCallResult {{
       }}
     }}
 
-    return {{ allow: true }};
+    return undefined; // Allow the tool call
   }} catch (e) {{
     console.error(`[{PROJECT_NAME}] Exception: ${{e}}`);
-    return {{ allow: true }}; // Fail open on exceptions
+    return undefined; // Fail open on exceptions
   }}
 }}
 
 export default function register(api: PluginAPI) {{
   // Register before_tool_call hook to intercept tool executions
-  // This fires before any tool (exec, Read, Write, etc.) is executed
-  const hookHandler = (event: unknown) => {{
-    const toolEvent = event as ToolCallEvent;
+  // This fires before any tool is executed
+  // Ref: OpenClaw PR #6264
+  api.registerHook("before_tool_call", (event: unknown) => {{
+    const toolEvent = event as BeforeToolCallEvent;
 
-    // Skip internal/system tools if needed
-    if (!toolEvent.tool) {{
-      return event;
+    // Skip if no tool name
+    if (!toolEvent.toolName) {{
+      return undefined;
     }}
 
     const result = callViberails(toolEvent);
 
-    if (!result.allow) {{
-      // Return a blocked response - the exact format depends on OpenClaw/Clawdbot version
-      // OpenClaw expects throwing or returning an error object
-      throw new Error(`🛡️ {PROJECT_NAME}: ${{result.reason}}`);
-    }}
+    // Return the blocking response or undefined to allow
+    return result;
+  }});
 
-    // Return the original or modified event to allow the tool call to proceed
-    return result.modifiedParameters ? {{ ...toolEvent, parameters: result.modifiedParameters }} : event;
-  }};
-
-  // Try OpenClaw API first, fall back to Clawdbot API
-  if (typeof api.registerHook === "function") {{
-    api.registerHook("before_tool_call", hookHandler);
-  }} else if (typeof api.addHook === "function") {{
-    api.addHook("before_tool_call", hookHandler);
-  }} else {{
-    console.warn("[{PROJECT_NAME}] Could not register hook: API method not found");
-  }}
-
-  console.log(`[{PROJECT_NAME}] Plugin loaded - monitoring tool calls`);
+  console.log(`[{PROJECT_NAME}] Plugin loaded - monitoring tool calls via before_tool_call hook`);
 }}
 "#
         )
     }
 
-    /// Install plugin files into a specific directory.
-    fn install_plugin_files(&self, install_dir: &std::path::Path, is_openclaw: bool) -> Result<()> {
+    /// Install plugin files into the `OpenClaw` extensions directory.
+    fn install_plugin_files(&self, install_dir: &std::path::Path) -> Result<()> {
         let plugin_dir = Self::plugin_dir(install_dir);
 
         // Create plugin directory
@@ -269,15 +241,13 @@ export default function register(api: PluginAPI) {{
             )
         })?;
 
-        // Write plugin manifest with appropriate filename
-        let manifest_name = if is_openclaw {
-            "openclaw.plugin.json"
-        } else {
-            "clawdbot.plugin.json"
-        };
-        let manifest_path = plugin_dir.join(manifest_name);
+        // Write plugin manifest
+        let manifest_path = plugin_dir.join("openclaw.plugin.json");
         fs::write(&manifest_path, Self::generate_plugin_manifest()).with_context(|| {
-            format!("Unable to write {} at {}", manifest_name, manifest_path.display())
+            format!(
+                "Unable to write openclaw.plugin.json at {}",
+                manifest_path.display()
+            )
         })?;
 
         // Write index.ts
@@ -387,7 +357,7 @@ export default function register(api: PluginAPI) {{
         Ok(())
     }
 
-    /// Remove plugin files from a specific directory.
+    /// Remove plugin files from the extensions directory.
     fn uninstall_plugin_files(install_dir: &std::path::Path) -> Result<()> {
         let plugin_dir = Self::plugin_dir(install_dir);
         if plugin_dir.exists() {
@@ -428,10 +398,7 @@ export default function register(api: PluginAPI) {{
             .and_then(|entries| entries.remove(PROJECT_NAME));
 
         if removed.is_none() {
-            warn!(
-                "{PROJECT_NAME} not found in {}",
-                config_file.display()
-            );
+            warn!("{PROJECT_NAME} not found in {}", config_file.display());
             return Ok(());
         }
 
@@ -461,9 +428,9 @@ export default function register(api: PluginAPI) {{
     /// For testing: install into a specific config and update its JSON
     #[cfg(test)]
     pub(crate) fn install_into(&self, _hook_type: &str, json: &mut Value) -> Result<()> {
-        let root = json.as_object_mut().ok_or_else(|| {
-            anyhow!("Expected root to be a JSON object")
-        })?;
+        let root = json
+            .as_object_mut()
+            .ok_or_else(|| anyhow!("Expected root to be a JSON object"))?;
 
         let plugins_obj = root
             .entry("plugins")
@@ -497,54 +464,55 @@ export default function register(api: PluginAPI) {{
     }
 }
 
-impl LLmProviderTrait for Clawdbot {
+impl LLmProviderTrait for OpenClaw {
     fn name(&self) -> &'static str {
-        "clawdbot"
+        "openclaw"
     }
 
     fn install(&self, hook_type: &str) -> Result<()> {
-        let detected_dirs = ClawdbotDiscovery::all_detected_dirs();
+        let Some((install_dir, config_name)) = OpenClawDiscovery::openclaw_paths() else {
+            anyhow::bail!("No OpenClaw installation detected");
+        };
 
-        if detected_dirs.is_empty() {
-            anyhow::bail!("No Clawdbot/OpenClaw installation detected");
+        if !install_dir.exists() {
+            anyhow::bail!("OpenClaw directory not found at {}", install_dir.display());
         }
 
-        // Install into all detected installations (both openclaw and clawdbot if present)
-        for (install_dir, config_name) in detected_dirs {
-            let is_openclaw = config_name == "openclaw.json";
-            info!(
-                "Installing {hook_type} plugin in {}",
-                install_dir.display()
-            );
+        info!(
+            "Installing {hook_type} plugin in {}",
+            install_dir.display()
+        );
 
-            // Install plugin files (manifest and index.ts)
-            self.install_plugin_files(&install_dir, is_openclaw)?;
+        // Install plugin files (manifest and index.ts)
+        self.install_plugin_files(&install_dir)?;
 
-            // Enable in config
-            let config_file = install_dir.join(config_name);
-            Self::enable_in_config(&config_file)?;
-        }
+        // Enable in config
+        let config_file = install_dir.join(config_name);
+        Self::enable_in_config(&config_file)?;
 
         Ok(())
     }
 
     fn uninstall(&self, hook_type: &str) -> Result<()> {
-        let detected_dirs = ClawdbotDiscovery::all_detected_dirs();
+        let Some((install_dir, config_name)) = OpenClawDiscovery::openclaw_paths() else {
+            return Ok(());
+        };
 
-        // Uninstall from all detected installations
-        for (install_dir, config_name) in detected_dirs {
-            info!(
-                "Uninstalling {hook_type} from {}",
-                install_dir.display()
-            );
-
-            // Remove plugin files
-            Self::uninstall_plugin_files(&install_dir)?;
-
-            // Disable in config
-            let config_file = install_dir.join(config_name);
-            Self::disable_in_config(&config_file)?;
+        if !install_dir.exists() {
+            return Ok(());
         }
+
+        info!(
+            "Uninstalling {hook_type} from {}",
+            install_dir.display()
+        );
+
+        // Remove plugin files
+        Self::uninstall_plugin_files(&install_dir)?;
+
+        // Disable in config
+        let config_file = install_dir.join(config_name);
+        Self::disable_in_config(&config_file)?;
 
         Ok(())
     }
@@ -552,51 +520,53 @@ impl LLmProviderTrait for Clawdbot {
     fn list(&self) -> Result<Vec<HookEntry>> {
         let mut entries = Vec::new();
 
-        for (install_dir, config_name) in ClawdbotDiscovery::all_detected_dirs() {
-            let config_file = install_dir.join(config_name);
+        let Some((install_dir, config_name)) = OpenClawDiscovery::openclaw_paths() else {
+            return Ok(entries);
+        };
 
-            if !config_file.exists() {
-                continue;
-            }
+        let config_file = install_dir.join(config_name);
 
-            let data = fs::read_to_string(&config_file)
-                .with_context(|| format!("Unable to read {}", config_file.display()))?;
+        if !config_file.exists() {
+            return Ok(entries);
+        }
 
-            let json: Value = serde_json::from_str(&data)
-                .with_context(|| format!("Unable to parse JSON in {}", config_file.display()))?;
+        let data = fs::read_to_string(&config_file)
+            .with_context(|| format!("Unable to read {}", config_file.display()))?;
 
-            // Check plugins.entries
-            if let Some(entries_obj) = json
-                .get("plugins")
-                .and_then(|p| p.get("entries"))
-                .and_then(|e| e.as_object())
-            {
-                for (plugin_name, plugin_config) in entries_obj {
-                    let enabled = plugin_config
-                        .get("enabled")
-                        .and_then(serde_json::Value::as_bool)
-                        .unwrap_or(true);
+        let json: Value = serde_json::from_str(&data)
+            .with_context(|| format!("Unable to parse JSON in {}", config_file.display()))?;
 
-                    // Check if plugin directory exists
-                    let plugin_dir = install_dir.join("extensions").join(plugin_name);
-                    let has_index = plugin_dir.join("index.ts").exists();
+        // Check plugins.entries
+        if let Some(entries_obj) = json
+            .get("plugins")
+            .and_then(|p| p.get("entries"))
+            .and_then(|e| e.as_object())
+        {
+            for (plugin_name, plugin_config) in entries_obj {
+                let enabled = plugin_config
+                    .get("enabled")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(true);
 
-                    let command = if has_index {
-                        format!("[plugin: {}]", plugin_dir.display())
+                // Check if plugin directory exists
+                let plugin_dir = install_dir.join("extensions").join(plugin_name);
+                let has_index = plugin_dir.join("index.ts").exists();
+
+                let command = if has_index {
+                    format!("[plugin: {}]", plugin_dir.display())
+                } else {
+                    "[plugin - index.ts missing]".to_string()
+                };
+
+                entries.push(HookEntry {
+                    hook_type: "plugin".to_string(),
+                    matcher: if enabled {
+                        plugin_name.clone()
                     } else {
-                        "[plugin - index.ts missing]".to_string()
-                    };
-
-                    entries.push(HookEntry {
-                        hook_type: "plugin".to_string(),
-                        matcher: if enabled {
-                            plugin_name.clone()
-                        } else {
-                            format!("{plugin_name} (disabled)")
-                        },
-                        command,
-                    });
-                }
+                        format!("{plugin_name} (disabled)")
+                    },
+                    command,
+                });
             }
         }
 

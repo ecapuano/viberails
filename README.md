@@ -30,7 +30,7 @@ AI coding assistants like Claude Code, Cursor, and Copilot are transforming how 
     - Gemini CLI
     - OpenAI Codex CLI
     - OpenCode
-    - Clawdbot/OpenClaw
+    - OpenClaw
 
 - **Zero Friction Setup** - Install in under 2 minutes with automatic tool detection
 

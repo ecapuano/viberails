@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 
-use crate::common::EXECUTABLE_NAME;
+use crate::common::{EXECUTABLE_NAME, PROJECT_NAME};
 
 use super::LLmProviderTrait;
 
@@ -63,10 +63,12 @@ pub trait ProviderFactory: ProviderDiscovery {
         {
             // Check if any hook command contains our binary name
             // We look for the callback command pattern (e.g., "__PROJECT_NAME__ claude-callback")
+            // or for OpenClaw plugins, we check if the matcher is our project name
             result.hooks_installed = hooks.iter().any(|h| {
                 h.command.contains("-callback") && h.command.contains(EXECUTABLE_NAME)
                     || h.command.ends_with(&format!("/{EXECUTABLE_NAME}"))
                     || h.command.contains(&format!("/{EXECUTABLE_NAME} "))
+                    || h.matcher == PROJECT_NAME // OpenClaw plugin detection
             });
         }
 

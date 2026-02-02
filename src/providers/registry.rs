@@ -1,10 +1,10 @@
 use super::claude::ClaudeDiscovery;
-use super::clawdbot::ClawdbotDiscovery;
 use super::codex::CodexDiscovery;
 use super::cursor::CursorDiscovery;
 use super::discovery::{DiscoveryResult, ProviderFactory};
 use super::gemini::GeminiDiscovery;
 use super::opencode::OpenCodeDiscovery;
+use super::openclaw::OpenClawDiscovery;
 
 /// Central registry of all known providers.
 /// Manages discovery and creation of provider instances.
@@ -29,7 +29,7 @@ impl ProviderRegistry {
             Box::new(GeminiDiscovery),
             Box::new(CodexDiscovery),
             Box::new(OpenCodeDiscovery),
-            Box::new(ClawdbotDiscovery),
+            Box::new(OpenClawDiscovery),
         ];
 
         Self { providers }

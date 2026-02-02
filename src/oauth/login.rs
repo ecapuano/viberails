@@ -221,7 +221,7 @@ fn create_ssh_access_rule(oid: &str, jwt: &str) -> Result<()> {
 }
 
 /// Rule: Detect hook configuration file modifications
-/// Monitors: Claude, Cursor, Gemini, Codex, `OpenCode`, Clawdbot config files
+/// Monitors: Claude, Cursor, Gemini, Codex, `OpenCode`, `OpenClaw` config files
 fn create_hook_config_tamper_rule(oid: &str, jwt: &str) -> Result<()> {
     info!("Creating hook config tampering detection rule");
     // Hook config file patterns to monitor
@@ -232,8 +232,7 @@ fn create_hook_config_tamper_rule(oid: &str, jwt: &str) -> Result<()> {
         ".gemini/settings.json",    // Gemini CLI
         ".codex/config.toml",       // OpenAI Codex CLI
         ".config/opencode/opencode.json", // OpenCode
-        ".openclaw/openclaw.json",  // Clawdbot/OpenClaw (new)
-        ".clawdbot/clawdbot.json",  // Clawdbot (legacy)
+        ".openclaw/openclaw.json",  // OpenClaw
     ];
 
     // Build file path match rules for Write/Edit tools
