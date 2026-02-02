@@ -164,7 +164,7 @@ where
         .send()
         .with_context(|| format!("Failed to connect to authorization server at {LC_JWT_URL}"))?;
 
-    if res.status_code >= 400 {
+    if !(200..300).contains(&res.status_code) {
         let error_body = res.as_str().unwrap_or("Unknown error");
         anyhow::bail!(
             "JWT request failed with status {}: {}",
@@ -269,9 +269,18 @@ where
         .send()
         .with_context(|| format!("Failed to query {} availability {url}", name.as_ref()))?;
 
+    if !(200..300).contains(&res.status_code) {
+        let error_body = res.as_str().unwrap_or("Unknown error");
+        anyhow::bail!(
+            "Org availability check failed with status {}: {}",
+            res.status_code,
+            error_body
+        );
+    }
+
     let resp: LcOrgAvailable = res
         .json()
-        .context("Unable to deserialized data from {url}")?;
+        .context("Unable to deserialize org availability response")?;
 
     Ok(resp.is_available)
 }
@@ -298,6 +307,15 @@ where
         .with_body(body)
         .send()
         .with_context(|| format!("Failed to create org at {url}"))?;
+
+    if !(200..300).contains(&res.status_code) {
+        let error_body = res.as_str().unwrap_or("Unknown error");
+        anyhow::bail!(
+            "Org creation failed with status {}: {}",
+            res.status_code,
+            error_body
+        );
+    }
 
     let resp: OrgCreateResponse = res
         .json()

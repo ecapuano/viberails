@@ -284,6 +284,15 @@ impl<'a> CloudQuery<'a> {
             .send()
             .with_context(|| format!("Failed to connect to hook server at {}", self.url))?;
 
+        if !(200..300).contains(&res.status_code) {
+            let error_body = res.as_str().unwrap_or("Unknown error");
+            anyhow::bail!(
+                "Authorization request failed with status {}: {}",
+                res.status_code,
+                error_body
+            );
+        }
+
         let data = res.as_str()?;
 
         info!("cloud returned {data}");
