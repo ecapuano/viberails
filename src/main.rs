@@ -1,26 +1,12 @@
-mod cloud;
-mod common;
-mod config;
-mod default;
-mod hooks;
-mod logging;
-mod oauth;
-mod providers;
-mod upgrade;
-
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use inquire::{Select, Text};
 use log::warn;
 
-use crate::{
-    common::{PROJECT_NAME, PROJECT_VERSION},
-    config::{JoinTeamArgs, join_team, show_configuration},
-    hooks::{codex_hook, hook, install, list, uninstall},
-    logging::Logging,
-    oauth::{LoginArgs, login::login},
-    providers::Providers,
-    upgrade::{poll_upgrade, upgrade},
+use viberails::{
+    JoinTeamArgs, Logging, LoginArgs, MenuAction, PROJECT_NAME, PROJECT_VERSION, Providers,
+    codex_hook, get_menu_options, hook, install, join_team, list, login, poll_upgrade,
+    show_configuration, uninstall, upgrade,
 };
 
 #[derive(Parser)]
@@ -96,58 +82,6 @@ fn init_logging(verbose: bool) -> Result<()> {
         let file_name = format!("{PROJECT_NAME}.log");
         Logging::new().with_file(file_name).start()
     }
-}
-
-/// Menu option for the interactive menu
-struct MenuOption {
-    label: &'static str,
-    action: MenuAction,
-}
-
-/// Actions that can be performed from the interactive menu
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MenuAction {
-    InitializeTeam,
-    JoinTeam,
-    InstallHooks,
-    UninstallHooks,
-    ListHooks,
-    ShowConfiguration,
-    Upgrade,
-}
-
-/// Returns all available menu options
-fn get_menu_options() -> Vec<MenuOption> {
-    vec![
-        MenuOption {
-            label: "Initialize Team",
-            action: MenuAction::InitializeTeam,
-        },
-        MenuOption {
-            label: "Join Team",
-            action: MenuAction::JoinTeam,
-        },
-        MenuOption {
-            label: "Install Hooks",
-            action: MenuAction::InstallHooks,
-        },
-        MenuOption {
-            label: "Uninstall Hooks",
-            action: MenuAction::UninstallHooks,
-        },
-        MenuOption {
-            label: "List Hooks",
-            action: MenuAction::ListHooks,
-        },
-        MenuOption {
-            label: "Show Configuration",
-            action: MenuAction::ShowConfiguration,
-        },
-        MenuOption {
-            label: "Upgrade",
-            action: MenuAction::Upgrade,
-        },
-    ]
 }
 
 /// Display the interactive menu and execute the selected action
@@ -228,102 +162,4 @@ fn main() -> Result<()> {
     }
 
     ret
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_menu_options_count() {
-        let options = get_menu_options();
-        // Should have 7 menu options (user-facing only, not hidden callbacks)
-        assert_eq!(options.len(), 7);
-    }
-
-    #[test]
-    fn test_menu_options_labels_are_unique() {
-        let options = get_menu_options();
-        let labels: Vec<_> = options.iter().map(|o| o.label).collect();
-
-        let mut unique_labels = labels.clone();
-        unique_labels.sort();
-        unique_labels.dedup();
-        assert_eq!(labels.len(), unique_labels.len());
-    }
-
-    #[test]
-    fn test_menu_options_labels_not_empty() {
-        let options = get_menu_options();
-        for option in &options {
-            assert!(!option.label.is_empty());
-        }
-    }
-
-    #[test]
-    fn test_menu_options_initialize_team_is_first() {
-        let options = get_menu_options();
-        // Initialize Team should be first (most common action for new users)
-        assert_eq!(options[0].action, MenuAction::InitializeTeam);
-    }
-
-    #[test]
-    fn test_menu_options_contains_all_actions() {
-        let options = get_menu_options();
-        let actions: Vec<_> = options.iter().map(|o| o.action).collect();
-
-        assert!(actions.contains(&MenuAction::InitializeTeam));
-        assert!(actions.contains(&MenuAction::JoinTeam));
-        assert!(actions.contains(&MenuAction::InstallHooks));
-        assert!(actions.contains(&MenuAction::UninstallHooks));
-        assert!(actions.contains(&MenuAction::ListHooks));
-        assert!(actions.contains(&MenuAction::ShowConfiguration));
-        assert!(actions.contains(&MenuAction::Upgrade));
-    }
-
-    #[test]
-    fn test_menu_lookup_finds_initialize_team() {
-        let options = get_menu_options();
-        let label = options
-            .iter()
-            .find(|o| o.action == MenuAction::InitializeTeam)
-            .map(|o| o.label)
-            .unwrap();
-
-        let found = options
-            .into_iter()
-            .find(|o| o.label == label)
-            .map(|o| o.action);
-
-        assert_eq!(found, Some(MenuAction::InitializeTeam));
-    }
-
-    #[test]
-    fn test_menu_lookup_finds_join_team() {
-        let options = get_menu_options();
-        let label = options
-            .iter()
-            .find(|o| o.action == MenuAction::JoinTeam)
-            .map(|o| o.label)
-            .unwrap();
-
-        let found = options
-            .into_iter()
-            .find(|o| o.label == label)
-            .map(|o| o.action);
-
-        assert_eq!(found, Some(MenuAction::JoinTeam));
-    }
-
-    #[test]
-    fn test_menu_lookup_unknown_label_returns_none() {
-        let options = get_menu_options();
-
-        let found = options
-            .into_iter()
-            .find(|o| o.label == "Unknown Action")
-            .map(|o| o.action);
-
-        assert_eq!(found, None);
-    }
 }

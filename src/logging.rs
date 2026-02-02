@@ -8,15 +8,18 @@ use env_logger::Target;
 
 use crate::common::project_data_dir;
 
+#[derive(Default)]
 pub struct Logging {
     file_name: Option<PathBuf>,
 }
 
 impl Logging {
+    #[must_use]
     pub fn new() -> Self {
         Self { file_name: None }
     }
 
+    #[must_use]
     pub fn with_file<P>(mut self, file_name: P) -> Self
     where
         P: Into<PathBuf>,

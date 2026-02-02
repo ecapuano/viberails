@@ -10,7 +10,13 @@ use tabled::{
 };
 use uuid::Uuid;
 
-use crate::common::{print_header, project_config_dir};
+use crate::{
+    PROJECT_NAME,
+    common::{print_header, project_config_dir},
+    hooks::{binary_location, install_binary},
+};
+
+use colored::Colorize;
 
 const CONFIG_FILE_NAME: &str = "config.json";
 
@@ -247,11 +253,22 @@ pub fn join_team(args: &JoinTeamArgs) -> Result<()> {
 
     config.save()?;
 
+    let program = binary_location()?;
+
+    if let Err(e) = install_binary(&program) {
+        eprintln!(
+            "Unable to install {PROJECT_NAME} @ {} ({e})",
+            program.display()
+        );
+    }
+
     println!("Joined team successfully!");
     println!();
-    println!("Team URL: {url}");
+    println!("{}", format!("Team URL: {url}").green());
     println!();
-    println!("Run 'install' to set up hooks for your AI coding tools.");
+    println!("Run to set up hooks for your AI coding tools:\n");
+    println!("{}", format!("{} install", program.display()).cyan());
+    println!();
 
     Ok(())
 }

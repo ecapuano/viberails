@@ -121,7 +121,41 @@ fn display_results(results: &[InstallResult]) {
     }
 }
 
-fn install_binary(dst: &Path) -> Result<()> {
+fn uninstall_binary(dst: &Path) -> Result<()> {
+    info!("Uninstall location {}", dst.display());
+
+    if !dst.exists() {
+        warn!("{} doesn't exist", dst.display());
+        return Ok(());
+    }
+
+    fs::remove_file(dst).with_context(|| format!("Unable to delete {}", dst.display()))?;
+
+    info!("{} was deleted", dst.display());
+
+    Ok(())
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// PUBLIC
+////////////////////////////////////////////////////////////////////////////////
+
+pub fn binary_location() -> Result<PathBuf> {
+    let home = dirs::home_dir().ok_or_else(|| {
+        anyhow!("Unable to determine home directory. Ensure HOME environment variable is set")
+    })?;
+
+    let local_bin = home.join(".local").join("bin");
+
+    if !local_bin.exists() {
+        fs::create_dir_all(&local_bin)
+            .with_context(|| format!("Unable to create {}", local_bin.display()))?;
+    }
+
+    Ok(local_bin.join(EXECUTABLE_NAME))
+}
+
+pub fn install_binary(dst: &Path) -> Result<()> {
     info!("Install location {}", dst.display());
 
     let current_exe = env::current_exe().context("Unable to find current exe")?;
@@ -155,40 +189,6 @@ fn install_binary(dst: &Path) -> Result<()> {
     info!("copied to {}", dst.display());
 
     Ok(())
-}
-
-fn uninstall_binary(dst: &Path) -> Result<()> {
-    info!("Uninstall location {}", dst.display());
-
-    if !dst.exists() {
-        warn!("{} doesn't exist", dst.display());
-        return Ok(());
-    }
-
-    fs::remove_file(dst).with_context(|| format!("Unable to delete {}", dst.display()))?;
-
-    info!("{} was deleted", dst.display());
-
-    Ok(())
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// PUBLIC
-////////////////////////////////////////////////////////////////////////////////
-
-pub fn binary_location() -> Result<PathBuf> {
-    let home = dirs::home_dir().ok_or_else(|| {
-        anyhow!("Unable to determine home directory. Ensure HOME environment variable is set")
-    })?;
-
-    let local_bin = home.join(".local").join("bin");
-
-    if !local_bin.exists() {
-        fs::create_dir_all(&local_bin)
-            .with_context(|| format!("Unable to create {}", local_bin.display()))?;
-    }
-
-    Ok(local_bin.join(EXECUTABLE_NAME))
 }
 
 pub fn install() -> Result<()> {
