@@ -3,7 +3,11 @@ use bon::Builder;
 use log::info;
 use serde::{Deserialize, Serialize};
 
-use crate::{cloud::REQUEST_TIMEOUT_SECS, common::{PROJECT_NAME, user_agent}, default::get_embedded_default};
+use crate::{
+    cloud::REQUEST_TIMEOUT_SECS,
+    common::{PROJECT_NAME, user_agent},
+    default::get_embedded_default,
+};
 
 const LC_JWT_URL: &str = "https://jwt.limacharlie.io";
 const LC_API_URL: &str = "https://api.limacharlie.io/v1";
@@ -159,6 +163,15 @@ where
         .with_body(body)
         .send()
         .with_context(|| format!("Failed to connect to authorization server at {LC_JWT_URL}"))?;
+
+    if res.status_code >= 400 {
+        let error_body = res.as_str().unwrap_or("Unknown error");
+        anyhow::bail!(
+            "JWT request failed with status {}: {}",
+            res.status_code,
+            error_body
+        );
+    }
 
     let resp: LcJwtResponse = res
         .json()
