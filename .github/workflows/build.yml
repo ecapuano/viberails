@@ -219,6 +219,9 @@ jobs:
                   rm -rf dist
                   unzip viberails-dist.zip -d dist
 
+            - name: Remove entitlements.zip from distribution
+              run: rm -f dist/entitlements.zip
+
             - name: Regenerate checksums after signing
               run: |
                   # Read existing release.json to preserve version, timestamp, commit
@@ -279,6 +282,9 @@ jobs:
               with:
                   name: viberails-dist
                   path: dist
+
+            - name: Remove entitlements.zip from distribution
+              run: rm -f dist/entitlements.zip
 
             - name: List distribution contents
               run: ls -la dist/
