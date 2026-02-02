@@ -28,7 +28,7 @@ use crate::{
 };
 
 const DEF_COPY_ATTEMPTS: usize = 4;
-const DEF_UPGRADE_CHECK: Duration = Duration::from_hours(1);
+const DEF_UPGRADE_CHECK: Duration = Duration::from_mins(15);
 const LOCK_FILE_NAME: &str = ".viberails.upgrade.lock";
 
 fn get_arch() -> &'static str {
