@@ -4,7 +4,6 @@ use super::cursor::CursorDiscovery;
 use super::discovery::{DiscoveryResult, ProviderFactory};
 use super::gemini::GeminiDiscovery;
 use super::opencode::OpenCodeDiscovery;
-use super::openclaw::OpenClawDiscovery;
 
 /// Central registry of all known providers.
 /// Manages discovery and creation of provider instances.
@@ -23,13 +22,14 @@ impl ProviderRegistry {
     #[must_use]
     pub fn new() -> Self {
         // Register all built-in providers
+        // Note: OpenClawDiscovery is intentionally excluded until OpenClaw adds proper hook support.
+        // The implementation in openclaw.rs is preserved for future use.
         let providers: Vec<Box<dyn ProviderFactory>> = vec![
             Box::new(ClaudeDiscovery),
             Box::new(CursorDiscovery),
             Box::new(GeminiDiscovery),
             Box::new(CodexDiscovery),
             Box::new(OpenCodeDiscovery),
-            Box::new(OpenClawDiscovery),
         ];
 
         Self { providers }

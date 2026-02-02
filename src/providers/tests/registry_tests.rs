@@ -119,3 +119,23 @@ fn test_registry_discover_all_matches_all_iterator() {
     // Should have same number of providers
     assert_eq!(discoveries.len(), all_count);
 }
+
+#[test]
+fn test_registry_excludes_openclaw() {
+    // OpenClaw is intentionally excluded from the registry until it adds proper hook support.
+    // The implementation is preserved in openclaw.rs for future use.
+    // See: https://github.com/refractionPOINT/project-west-coast/issues/XXX (if applicable)
+    let registry = ProviderRegistry::new();
+
+    let has_openclaw = registry.all().any(|f| f.id() == "openclaw");
+    assert!(
+        !has_openclaw,
+        "OpenClaw should NOT be in the registry - it was intentionally disabled"
+    );
+
+    // Also verify via get()
+    assert!(
+        registry.get("openclaw").is_none(),
+        "OpenClaw should not be retrievable from registry"
+    );
+}
