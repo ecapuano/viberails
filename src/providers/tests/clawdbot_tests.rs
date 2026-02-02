@@ -179,6 +179,19 @@ fn test_install_into_fails_on_plugins_not_object() {
     assert!(result.is_err());
 }
 
+#[test]
+fn test_install_into_fails_on_entries_not_object() {
+    let clawdbot = make_clawdbot("/usr/bin/test-program");
+    let mut json = json!({
+        "plugins": {
+            "entries": "not an object"
+        }
+    });
+
+    let result = clawdbot.install_into("plugin", &mut json);
+    assert!(result.is_err());
+}
+
 // Generated content tests
 #[test]
 fn test_generate_plugin_manifest_contains_required_fields() {
