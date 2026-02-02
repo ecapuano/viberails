@@ -381,25 +381,27 @@ pub fn login(args: &LoginArgs) -> Result<()> {
         info!("No email in OAuth response, skipping user profile creation");
     }
 
-    println!("Requesting access token...");
-    info!("requesting a JWT token");
-    let jwt = get_jwt_firebase("-", &login.id_token).context("Unable to get JWT from FB TOKEN")?;
-    info!("received token");
-    println!("Access token received.");
-
     //
     // Either use an existing org or create a new one
     //
     let (oid, org_name) = if let Some(ref existing_oid) = args.existing_org {
-        // Use existing org - fetch name from API
+        // Use existing org - get a JWT for this specific org first
+        // We need a JWT with permissions for this org to fetch its info
         println!("Looking up existing organization...");
         info!("Using existing org oid={existing_oid}");
+        let jwt = wait_for_org(existing_oid, &login.id_token)?;
         let org_info =
             get_org_info(&jwt, existing_oid).context("Unable to get organization info")?;
         info!("Org name: {}", org_info.name);
         println!("Using team '{}'.", org_info.name);
         (existing_oid.clone(), org_info.name)
     } else {
+        // Creating a new org - get a generic JWT first
+        println!("Requesting access token...");
+        info!("requesting a JWT token");
+        let jwt = get_jwt_firebase("-", &login.id_token).context("Unable to get JWT from FB TOKEN")?;
+        info!("received token");
+        println!("Access token received.");
         // Ask the user for the org name
         let org_name = query_org_name(&jwt)?;
 

@@ -53,12 +53,7 @@ struct OrgUrlsResponse {
     url: OrgUrls,
 }
 
-#[derive(Debug, Deserialize)]
-struct OrgInfoResponse {
-    org: OrgInfo,
-}
-
-/// Organization information returned from the API
+/// Organization information returned from the API.
 #[derive(Debug, Deserialize)]
 pub struct OrgInfo {
     pub name: String,
@@ -331,11 +326,11 @@ where
         );
     }
 
-    let resp: OrgInfoResponse = res
+    let resp: OrgInfo = res
         .json()
         .context("Unable to deserialize org info response")?;
 
-    Ok(resp.org)
+    Ok(resp)
 }
 
 pub fn get_org_urls<O>(oid: O) -> Result<OrgUrls>
