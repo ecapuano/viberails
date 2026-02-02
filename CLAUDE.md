@@ -20,3 +20,9 @@ These checks are enforced by the pre-commit hook.
 - Build: `cargo build`
 - Test: `cargo test`
 - Clippy: `cargo clippy -- -D warnings`
+
+## Providers
+
+Whenver you have to make changes for providers, providers are implementing
+the LLmProviderTrait trait and they can override the default implemtation
+this way we don't break other working providers
