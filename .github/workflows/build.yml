@@ -212,7 +212,7 @@ jobs:
               run: pip install -r signing/requirements.txt
 
             - name: Code sign
-              run: python signing/client.py --timeout 120 --base64-key ${{ secrets.CODE_SIGNING_KEY }} -i viberails-dist.zip
+              run: python signing/client.py --timeout 600 --base64-key ${{ secrets.CODE_SIGNING_KEY }} -i viberails-dist.zip
 
             - name: Extract signed distribution
               run: |
