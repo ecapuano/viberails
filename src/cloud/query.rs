@@ -38,6 +38,28 @@ struct CloudResponse {
     rule: Option<String>,
 }
 
+impl CloudResponse {
+    pub fn block_message(&self) -> String {
+        let mut parts = Vec::new();
+
+        parts.push("Command blocked by policy.".to_string());
+
+        if let Some(reason) = &self.reason {
+            parts.push(format!("Reason: {reason}"));
+        }
+
+        if let Some(rule) = &self.rule {
+            parts.push(format!("Rule: {rule}"));
+        }
+
+        if let Some(error) = &self.error {
+            parts.push(format!("Error: {error}"));
+        }
+
+        parts.join(" ")
+    }
+}
+
 #[derive(Serialize)]
 struct CloudRequestMetaVersion {
     version: &'static str,
@@ -274,13 +296,7 @@ impl<'a> CloudQuery<'a> {
         let verdict = if data.success {
             CloudVerdict::Allow
         } else {
-            let msg = if let Some(reason) = data.reason {
-                format!("deny reason: {reason}")
-            } else if let Some(rule) = data.rule {
-                format!("blocked by rule: {rule}")
-            } else {
-                "denied by policy".to_string()
-            };
+            let msg = data.block_message();
 
             CloudVerdict::Deny(msg)
         };
