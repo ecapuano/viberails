@@ -179,7 +179,8 @@ impl<'a> CloudQuery<'a> {
 
         // Parse the URL and extract the secret from the last path segment
         // URL format: https://{hooks_domain}/{oid}/{adapter_name}/{secret}
-        let (url, secret) = Self::extract_secret_from_url(&config.org.url)?;
+        let (url, secret) = Self::extract_secret_from_url(&config.org.url)
+            .with_context(|| format!("Unable to get secret from {}", config.org.url))?;
 
         info!("Using url={url}");
 
