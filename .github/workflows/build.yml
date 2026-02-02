@@ -171,12 +171,12 @@ jobs:
                   done
                   CHECKSUMS_JSON+="}"
 
-                  # Create release.json with version and checksums
-                  echo "{\"version\": \"$VERSION\", \"timestamp\": $TIMESTAMP, \"commit\": \"$GITHUB_SHA\", \"checksums\": $CHECKSUMS_JSON}" > dist/release.json
+                  # Create release.json with version and checksums (pretty printed)
+                  echo "{\"version\": \"$VERSION\", \"timestamp\": $TIMESTAMP, \"commit\": \"$GITHUB_SHA\", \"checksums\": $CHECKSUMS_JSON}" | python3 -m json.tool > dist/release.json
 
                   # Display release.json for verification
                   echo "Generated release.json:"
-                  cat dist/release.json | jq .
+                  cat dist/release.json
 
             - name: Upload distribution
               uses: actions/upload-artifact@v4
@@ -250,12 +250,12 @@ jobs:
                   done
                   CHECKSUMS_JSON+="}"
 
-                  # Update release.json with new checksums
-                  echo "{\"version\": \"$VERSION\", \"timestamp\": $TIMESTAMP, \"commit\": \"$COMMIT\", \"checksums\": $CHECKSUMS_JSON}" > dist/release.json
+                  # Update release.json with new checksums (pretty printed)
+                  echo "{\"version\": \"$VERSION\", \"timestamp\": $TIMESTAMP, \"commit\": \"$COMMIT\", \"checksums\": $CHECKSUMS_JSON}" | python3 -m json.tool > dist/release.json
 
                   # Display updated release.json for verification
                   echo "Updated release.json with post-signing checksums:"
-                  cat dist/release.json | jq .
+                  cat dist/release.json
 
             - name: Upload signed distribution
               uses: actions/upload-artifact@v4
