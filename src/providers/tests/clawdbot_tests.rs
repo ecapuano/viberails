@@ -6,7 +6,7 @@ use crate::common::PROJECT_NAME;
 use crate::providers::clawdbot::Clawdbot;
 
 fn make_clawdbot(program: &str) -> Clawdbot {
-    Clawdbot::with_custom_path(program).unwrap()
+    Clawdbot::with_custom_path(program)
 }
 
 #[test]
@@ -24,7 +24,8 @@ fn test_install_into_empty_json() {
     assert!(entries.is_object());
     let entry = &entries[PROJECT_NAME];
     assert!(entry["enabled"].as_bool().unwrap());
-    assert_eq!(entry["command"], "/usr/bin/test-program clawdbot-callback");
+    // Directory-based hooks don't have a "command" key
+    assert!(entry.get("command").is_none());
 }
 
 #[test]
@@ -68,8 +69,7 @@ fn test_install_into_skips_if_already_installed() {
                 "enabled": true,
                 "entries": {
                     PROJECT_NAME: {
-                        "enabled": true,
-                        "command": "/usr/bin/test-program clawdbot-callback"
+                        "enabled": true
                     }
                 }
             }
@@ -83,7 +83,7 @@ fn test_install_into_skips_if_already_installed() {
 }
 
 #[test]
-fn test_install_into_updates_different_command() {
+fn test_install_into_preserves_existing_entry() {
     let clawdbot = make_clawdbot("/usr/bin/test-program");
     let mut json = json!({
         "hooks": {
@@ -91,8 +91,7 @@ fn test_install_into_updates_different_command() {
                 "enabled": false,
                 "entries": {
                     PROJECT_NAME: {
-                        "enabled": false,
-                        "command": "/old/path clawdbot-callback"
+                        "enabled": false
                     }
                 }
             }
@@ -101,17 +100,9 @@ fn test_install_into_updates_different_command() {
 
     clawdbot.install_into("hooks", &mut json).unwrap();
 
-    // Should be updated with new command
-    assert_eq!(
-        json["hooks"]["internal"]["entries"][PROJECT_NAME]["command"],
-        "/usr/bin/test-program clawdbot-callback"
-    );
-    assert!(
-        json["hooks"]["internal"]["entries"][PROJECT_NAME]["enabled"]
-            .as_bool()
-            .unwrap()
-    );
-    // internal.enabled should also be set to true
+    // Entry should exist (won't overwrite existing)
+    assert!(json["hooks"]["internal"]["entries"][PROJECT_NAME].is_object());
+    // internal.enabled should be set to true
     assert!(json["hooks"]["internal"]["enabled"].as_bool().unwrap());
 }
 
@@ -138,8 +129,7 @@ fn test_uninstall_from_removes_entry() {
                 "enabled": true,
                 "entries": {
                     PROJECT_NAME: {
-                        "enabled": true,
-                        "command": "/usr/bin/test-program clawdbot-callback"
+                        "enabled": true
                     },
                     "other-hook": {
                         "enabled": true
@@ -209,6 +199,62 @@ fn test_uninstall_from_no_entry() {
             .as_bool()
             .unwrap()
     );
+}
+
+// Error handling tests
+#[test]
+fn test_install_into_fails_on_non_object_root() {
+    let clawdbot = make_clawdbot("/usr/bin/test-program");
+    let mut json = json!([]);
+
+    let result = clawdbot.install_into("hooks", &mut json);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("JSON object"));
+}
+
+#[test]
+fn test_install_into_fails_on_hooks_not_object() {
+    let clawdbot = make_clawdbot("/usr/bin/test-program");
+    let mut json = json!({
+        "hooks": "not an object"
+    });
+
+    let result = clawdbot.install_into("hooks", &mut json);
+    assert!(result.is_err());
+}
+
+// Generated content tests
+#[test]
+fn test_generate_hook_md_contains_required_fields() {
+    use crate::providers::clawdbot::Clawdbot;
+
+    let hook_md = Clawdbot::generate_hook_md();
+
+    // Check YAML frontmatter markers
+    assert!(hook_md.starts_with("---\n"));
+    assert!(hook_md.contains("\n---\n"));
+
+    // Check required fields
+    assert!(hook_md.contains("name:"));
+    assert!(hook_md.contains("description:"));
+    assert!(hook_md.contains("events:"));
+    assert!(hook_md.contains(crate::common::PROJECT_NAME));
+}
+
+#[test]
+fn test_generate_handler_ts_contains_binary_path() {
+    let clawdbot = make_clawdbot("/custom/path/to/viberails");
+
+    let handler_ts = clawdbot.generate_handler_ts();
+
+    // Check it contains the binary path
+    assert!(handler_ts.contains("/custom/path/to/viberails"));
+    // Check it has the callback command
+    assert!(handler_ts.contains("clawdbot-callback"));
+    // Check it exports a default handler
+    assert!(handler_ts.contains("export default handler"));
+    // Check it imports HookHandler type
+    assert!(handler_ts.contains("HookHandler"));
 }
 
 // Discovery tests

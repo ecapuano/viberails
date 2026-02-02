@@ -10,7 +10,7 @@ use crate::providers::discovery::{DiscoveryResult, ProviderDiscovery, ProviderFa
 use crate::providers::{HookEntry, LLmProviderTrait};
 
 /// Clawdbot (now `OpenClaw`) uses a hooks system with directory-based handlers.
-/// We configure hooks via the JSON config file.
+/// We create a hook directory with HOOK.md and handler.ts files.
 pub const CLAWDBOT_HOOKS: &[&str] = &["hooks"];
 
 /// Discovery implementation for Clawdbot/OpenClaw.
@@ -45,6 +45,22 @@ impl ClawdbotDiscovery {
     fn is_detected() -> bool {
         dirs::home_dir()
             .is_some_and(|h| h.join(".openclaw").exists() || h.join(".clawdbot").exists())
+    }
+
+    /// Get all detected installation directories (for installing hooks in both if present)
+    fn all_detected_dirs() -> Vec<(PathBuf, &'static str)> {
+        let mut dirs = Vec::new();
+        if let Some(home) = dirs::home_dir() {
+            let openclaw = home.join(".openclaw");
+            if openclaw.exists() {
+                dirs.push((openclaw, "openclaw.json"));
+            }
+            let clawdbot = home.join(".clawdbot");
+            if clawdbot.exists() {
+                dirs.push((clawdbot, "clawdbot.json"));
+            }
+        }
+        dirs
     }
 }
 
@@ -85,8 +101,8 @@ impl ProviderFactory for ClawdbotDiscovery {
 }
 
 pub struct Clawdbot {
-    command_line: String,
-    config_file: PathBuf,
+    /// Path to the viberails binary
+    binary_path: PathBuf,
 }
 
 impl Clawdbot {
@@ -95,57 +111,169 @@ impl Clawdbot {
         // current_exe(), so the hook command is consistent regardless of where viberails
         // is run from. This prevents duplicate hooks when running from different locations.
         let exe = binary_location()?;
-        Self::with_custom_path(exe)
+        Ok(Self::with_custom_path(exe))
     }
 
-    pub fn with_custom_path<P: AsRef<std::path::Path>>(program: P) -> Result<Self> {
-        let (clawdbot_dir, config_name) = ClawdbotDiscovery::clawdbot_paths()
-            .ok_or_else(|| anyhow!("Unable to determine Clawdbot config directory"))?;
-
-        let config_file = clawdbot_dir.join(config_name);
-        let command_line = format!("{} clawdbot-callback", program.as_ref().display());
-
-        Ok(Self {
-            command_line,
-            config_file,
-        })
+    pub fn with_custom_path<P: AsRef<std::path::Path>>(program: P) -> Self {
+        Self {
+            binary_path: program.as_ref().to_path_buf(),
+        }
     }
 
-    /// Ensure the config file exists, creating it with minimal content if needed.
-    fn ensure_config_exists(&self) -> Result<()> {
-        if let Some(parent) = self.config_file.parent()
+    /// Get the hook directory path for a given installation directory.
+    fn hook_dir(install_dir: &std::path::Path) -> PathBuf {
+        install_dir.join("hooks").join(PROJECT_NAME)
+    }
+
+    /// Generate the HOOK.md content
+    pub(crate) fn generate_hook_md() -> String {
+        format!(
+            r#"---
+name: {PROJECT_NAME}
+description: "{PROJECT_NAME} security and compliance hook"
+metadata:
+  openclaw:
+    emoji: "🛡️"
+    events: ["command"]
+    requires:
+      bins: ["{PROJECT_NAME}"]
+---
+
+# {PROJECT_NAME} Hook
+
+This hook integrates {PROJECT_NAME} with Clawdbot/OpenClaw for security and compliance monitoring.
+
+All command events are forwarded to {PROJECT_NAME} for policy evaluation.
+"#
+        )
+    }
+
+    /// Generate the handler.ts content
+    pub(crate) fn generate_handler_ts(&self) -> String {
+        let binary_path = self.binary_path.display();
+        format!(
+            r#"import type {{ HookHandler }} from "openclaw/hooks";
+import {{ spawn }} from "child_process";
+
+const handler: HookHandler = async (event) => {{
+  // Forward all events to {PROJECT_NAME} for processing
+  const eventJson = JSON.stringify(event);
+
+  return new Promise((resolve, reject) => {{
+    const proc = spawn("{binary_path}", ["clawdbot-callback"], {{
+      stdio: ["pipe", "pipe", "pipe"],
+    }});
+
+    let stdout = "";
+    let stderr = "";
+
+    proc.stdout.on("data", (data: Buffer) => {{
+      stdout += data.toString();
+    }});
+
+    proc.stderr.on("data", (data: Buffer) => {{
+      stderr += data.toString();
+    }});
+
+    proc.on("close", (code: number | null) => {{
+      if (code !== 0) {{
+        console.error(`[{PROJECT_NAME}] Process exited with code ${{code}}: ${{stderr}}`);
+      }}
+
+      // Parse response if available
+      if (stdout.trim()) {{
+        try {{
+          const response = JSON.parse(stdout.trim());
+          if (response.decision === "block" && response.reason) {{
+            event.messages.push(`🛡️ {PROJECT_NAME}: ${{response.reason}}`);
+          }}
+        }} catch (e) {{
+          // Ignore parse errors, response may be empty for non-tool events
+        }}
+      }}
+      resolve();
+    }});
+
+    proc.on("error", (err: Error) => {{
+      console.error(`[{PROJECT_NAME}] Failed to spawn process: ${{err.message}}`);
+      resolve(); // Don't block on spawn errors
+    }});
+
+    // Send event data to stdin
+    proc.stdin.write(eventJson);
+    proc.stdin.end();
+  }});
+}};
+
+export default handler;
+"#
+        )
+    }
+
+    /// Install hook files into a specific directory
+    fn install_hook_files(&self, install_dir: &std::path::Path) -> Result<()> {
+        let hook_dir = Self::hook_dir(install_dir);
+
+        // Create hook directory
+        fs::create_dir_all(&hook_dir).with_context(|| {
+            format!("Unable to create hook directory at {}", hook_dir.display())
+        })?;
+
+        // Write HOOK.md
+        let hook_md_path = hook_dir.join("HOOK.md");
+        fs::write(&hook_md_path, Self::generate_hook_md()).with_context(|| {
+            format!("Unable to write HOOK.md at {}", hook_md_path.display())
+        })?;
+
+        // Write handler.ts
+        let handler_ts_path = hook_dir.join("handler.ts");
+        fs::write(&handler_ts_path, self.generate_handler_ts()).with_context(|| {
+            format!("Unable to write handler.ts at {}", handler_ts_path.display())
+        })?;
+
+        info!(
+            "Installed {PROJECT_NAME} hook files at {}",
+            hook_dir.display()
+        );
+
+        Ok(())
+    }
+
+    /// Enable the hook in the config file
+    fn enable_in_config(config_file: &std::path::Path) -> Result<()> {
+        // Ensure config file exists
+        if let Some(parent) = config_file.parent()
             && !parent.exists()
         {
             fs::create_dir_all(parent).with_context(|| {
                 format!(
-                    "Unable to create Clawdbot config directory at {}",
+                    "Unable to create config directory at {}",
                     parent.display()
                 )
             })?;
         }
 
-        if !self.config_file.exists() {
-            fs::write(&self.config_file, "{}\n").with_context(|| {
-                format!(
-                    "Unable to create Clawdbot config file at {}",
-                    self.config_file.display()
-                )
+        if !config_file.exists() {
+            fs::write(config_file, "{}\n").with_context(|| {
+                format!("Unable to create config file at {}", config_file.display())
             })?;
         }
 
-        Ok(())
-    }
+        // Read and parse config
+        let data = fs::read_to_string(config_file)
+            .with_context(|| format!("Unable to read {}", config_file.display()))?;
 
-    pub(crate) fn install_into(&self, _hook_type: &str, json: &mut Value) -> Result<()> {
+        let mut json: Value = serde_json::from_str(&data)
+            .with_context(|| format!("Unable to parse JSON in {}", config_file.display()))?;
+
+        // Update config structure
         let root = json.as_object_mut().ok_or_else(|| {
             anyhow!(
                 "Expected root of {} to be a JSON object",
-                self.config_file.display()
+                config_file.display()
             )
         })?;
 
-        // Clawdbot/OpenClaw uses:
-        // "hooks": { "internal": { "enabled": true, "entries": { "hook-name": { "enabled": true } } } }
         let hooks_obj = root
             .entry("hooks")
             .or_insert_with(|| json!({}))
@@ -153,7 +281,7 @@ impl Clawdbot {
             .ok_or_else(|| {
                 anyhow!(
                     "Expected 'hooks' field in {} to be an object",
-                    self.config_file.display()
+                    config_file.display()
                 )
             })?;
 
@@ -164,7 +292,7 @@ impl Clawdbot {
             .ok_or_else(|| {
                 anyhow!(
                     "Expected 'hooks.internal' field in {} to be an object",
-                    self.config_file.display()
+                    config_file.display()
                 )
             })?;
 
@@ -178,57 +306,159 @@ impl Clawdbot {
             .ok_or_else(|| {
                 anyhow!(
                     "Expected 'hooks.internal.entries' field in {} to be an object",
-                    self.config_file.display()
+                    config_file.display()
                 )
             })?;
 
-        // Check if hook is already registered
-        if let Some(existing) = entries_obj.get(PROJECT_NAME)
-            && existing.get("command").and_then(|c| c.as_str()) == Some(&self.command_line)
-        {
+        // Check if hook is already enabled
+        if entries_obj.get(PROJECT_NAME).is_some() {
             warn!(
-                "{PROJECT_NAME} hook already exists in {}",
-                self.config_file.display()
+                "{PROJECT_NAME} hook already enabled in {}",
+                config_file.display()
             );
-            return Ok(());
+        } else {
+            // Add hook entry - only "enabled" is valid, no "command" key!
+            entries_obj.insert(PROJECT_NAME.to_string(), json!({ "enabled": true }));
         }
 
-        // Add our hook entry
-        entries_obj.insert(
-            PROJECT_NAME.to_string(),
-            json!({
-                "enabled": true,
-                "command": &self.command_line
-            }),
-        );
+        // Write back with trailing newline
+        let mut json_str =
+            serde_json::to_string_pretty(&json).context("Failed to serialize config")?;
+        json_str.push('\n');
+
+        let mut fd = fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .create(true)
+            .open(config_file)
+            .with_context(|| format!("Unable to open {} for writing", config_file.display()))?;
+
+        fd.write_all(json_str.as_bytes())
+            .with_context(|| format!("Failed to write to {}", config_file.display()))?;
+
+        info!("Enabled {PROJECT_NAME} hook in {}", config_file.display());
 
         Ok(())
     }
 
-    pub(crate) fn uninstall_from(&self, _hook_type: &str, json: &mut Value) {
-        let entries_obj = json
+    /// Remove hook files from a specific directory
+    fn uninstall_hook_files(install_dir: &std::path::Path) -> Result<()> {
+        let hook_dir = Self::hook_dir(install_dir);
+
+        if hook_dir.exists() {
+            fs::remove_dir_all(&hook_dir).with_context(|| {
+                format!("Unable to remove hook directory at {}", hook_dir.display())
+            })?;
+            info!(
+                "Removed {PROJECT_NAME} hook files from {}",
+                hook_dir.display()
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Disable the hook in the config file
+    fn disable_in_config(config_file: &std::path::Path) -> Result<()> {
+        if !config_file.exists() {
+            return Ok(());
+        }
+
+        let data = fs::read_to_string(config_file)
+            .with_context(|| format!("Unable to read {}", config_file.display()))?;
+
+        let mut json: Value = serde_json::from_str(&data)
+            .with_context(|| format!("Unable to parse JSON in {}", config_file.display()))?;
+
+        // Remove entry from config
+        let removed = json
             .as_object_mut()
             .and_then(|root| root.get_mut("hooks"))
             .and_then(|h| h.as_object_mut())
             .and_then(|h| h.get_mut("internal"))
             .and_then(|i| i.as_object_mut())
             .and_then(|i| i.get_mut("entries"))
-            .and_then(|e| e.as_object_mut());
+            .and_then(|e| e.as_object_mut())
+            .and_then(|entries| entries.remove(PROJECT_NAME));
 
-        let Some(entries_obj) = entries_obj else {
-            warn!(
-                "No hooks.internal.entries found in {}",
-                self.config_file.display()
-            );
-            return;
-        };
-
-        if entries_obj.remove(PROJECT_NAME).is_none() {
+        if removed.is_none() {
             warn!(
                 "{PROJECT_NAME} hook not found in {}",
-                self.config_file.display()
+                config_file.display()
             );
+            return Ok(());
         }
+
+        // Write back with trailing newline
+        let mut json_str =
+            serde_json::to_string_pretty(&json).context("Failed to serialize config")?;
+        json_str.push('\n');
+
+        let mut fd = fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .create(true)
+            .open(config_file)
+            .with_context(|| format!("Unable to open {} for writing", config_file.display()))?;
+
+        fd.write_all(json_str.as_bytes())
+            .with_context(|| format!("Failed to write to {}", config_file.display()))?;
+
+        info!(
+            "Disabled {PROJECT_NAME} hook in {}",
+            config_file.display()
+        );
+
+        Ok(())
+    }
+
+    /// For testing: install into a specific config and update its JSON
+    #[cfg(test)]
+    pub(crate) fn install_into(&self, _hook_type: &str, json: &mut Value) -> Result<()> {
+        let root = json.as_object_mut().ok_or_else(|| {
+            anyhow!("Expected root to be a JSON object")
+        })?;
+
+        let hooks_obj = root
+            .entry("hooks")
+            .or_insert_with(|| json!({}))
+            .as_object_mut()
+            .ok_or_else(|| anyhow!("Expected 'hooks' to be an object"))?;
+
+        let internal_obj = hooks_obj
+            .entry("internal")
+            .or_insert_with(|| json!({"enabled": true, "entries": {}}))
+            .as_object_mut()
+            .ok_or_else(|| anyhow!("Expected 'hooks.internal' to be an object"))?;
+
+        internal_obj.insert("enabled".to_string(), json!(true));
+
+        let entries_obj = internal_obj
+            .entry("entries")
+            .or_insert_with(|| json!({}))
+            .as_object_mut()
+            .ok_or_else(|| anyhow!("Expected 'hooks.internal.entries' to be an object"))?;
+
+        // Only add "enabled" - no "command" key!
+        if entries_obj.get(PROJECT_NAME).is_none() {
+            entries_obj.insert(PROJECT_NAME.to_string(), json!({ "enabled": true }));
+        }
+
+        Ok(())
+    }
+
+    /// For testing: uninstall from a specific JSON
+    #[cfg(test)]
+    pub(crate) fn uninstall_from(&self, _hook_type: &str, json: &mut Value) {
+        let _ = json
+            .as_object_mut()
+            .and_then(|root| root.get_mut("hooks"))
+            .and_then(|h| h.as_object_mut())
+            .and_then(|h| h.get_mut("internal"))
+            .and_then(|i| i.as_object_mut())
+            .and_then(|i| i.get_mut("entries"))
+            .and_then(|e| e.as_object_mut())
+            .and_then(|entries| entries.remove(PROJECT_NAME));
     }
 }
 
@@ -238,109 +468,103 @@ impl LLmProviderTrait for Clawdbot {
     }
 
     fn install(&self, hook_type: &str) -> Result<()> {
-        info!("Installing {hook_type} in {}", self.config_file.display());
+        let detected_dirs = ClawdbotDiscovery::all_detected_dirs();
 
-        self.ensure_config_exists()?;
+        if detected_dirs.is_empty() {
+            anyhow::bail!("No Clawdbot/OpenClaw installation detected");
+        }
 
-        let data = fs::read_to_string(&self.config_file)
-            .with_context(|| format!("Unable to read {}", self.config_file.display()))?;
+        // Install into all detected installations (both openclaw and clawdbot if present)
+        for (install_dir, config_name) in detected_dirs {
+            info!(
+                "Installing {hook_type} in {}",
+                install_dir.display()
+            );
 
-        let mut json: Value = serde_json::from_str(&data)
-            .with_context(|| format!("Unable to parse JSON in {}", self.config_file.display()))?;
+            // Install hook files (HOOK.md and handler.ts)
+            self.install_hook_files(&install_dir)?;
 
-        self.install_into(hook_type, &mut json)
-            .with_context(|| format!("Unable to update {}", self.config_file.display()))?;
-
-        let json_str =
-            serde_json::to_string_pretty(&json).context("Failed to serialize Clawdbot config")?;
-
-        let mut fd = fs::OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .create(true)
-            .open(&self.config_file)
-            .with_context(|| {
-                format!("Unable to open {} for writing", self.config_file.display())
-            })?;
-
-        fd.write_all(json_str.as_bytes())
-            .with_context(|| format!("Failed to write to {}", self.config_file.display()))?;
+            // Enable in config
+            let config_file = install_dir.join(config_name);
+            Self::enable_in_config(&config_file)?;
+        }
 
         Ok(())
     }
 
     fn uninstall(&self, hook_type: &str) -> Result<()> {
-        info!(
-            "Uninstalling {hook_type} from {}",
-            self.config_file.display()
-        );
+        let detected_dirs = ClawdbotDiscovery::all_detected_dirs();
 
-        let data = fs::read_to_string(&self.config_file)
-            .with_context(|| format!("Unable to read {}", self.config_file.display()))?;
+        // Uninstall from all detected installations
+        for (install_dir, config_name) in detected_dirs {
+            info!(
+                "Uninstalling {hook_type} from {}",
+                install_dir.display()
+            );
 
-        let mut json: Value = serde_json::from_str(&data)
-            .with_context(|| format!("Unable to parse JSON in {}", self.config_file.display()))?;
+            // Remove hook files
+            Self::uninstall_hook_files(&install_dir)?;
 
-        self.uninstall_from(hook_type, &mut json);
-
-        let json_str =
-            serde_json::to_string_pretty(&json).context("Failed to serialize Clawdbot config")?;
-
-        let mut fd = fs::OpenOptions::new()
-            .write(true)
-            .truncate(true)
-            .create(true)
-            .open(&self.config_file)
-            .with_context(|| {
-                format!("Unable to open {} for writing", self.config_file.display())
-            })?;
-
-        fd.write_all(json_str.as_bytes())
-            .with_context(|| format!("Failed to write to {}", self.config_file.display()))?;
+            // Disable in config
+            let config_file = install_dir.join(config_name);
+            Self::disable_in_config(&config_file)?;
+        }
 
         Ok(())
     }
 
     fn list(&self) -> Result<Vec<HookEntry>> {
-        let data = fs::read_to_string(&self.config_file)
-            .with_context(|| format!("Unable to read {}", self.config_file.display()))?;
-
-        let json: Value = serde_json::from_str(&data)
-            .with_context(|| format!("Unable to parse JSON in {}", self.config_file.display()))?;
-
         let mut entries = Vec::new();
 
-        let entries_obj = json
-            .get("hooks")
-            .and_then(|h| h.get("internal"))
-            .and_then(|i| i.get("entries"))
-            .and_then(|e| e.as_object());
+        for (install_dir, config_name) in ClawdbotDiscovery::all_detected_dirs() {
+            let config_file = install_dir.join(config_name);
 
-        let Some(entries_obj) = entries_obj else {
-            return Ok(entries);
-        };
+            if !config_file.exists() {
+                continue;
+            }
 
-        for (hook_name, hook_config) in entries_obj {
-            let enabled = hook_config
-                .get("enabled")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(true);
+            let data = fs::read_to_string(&config_file)
+                .with_context(|| format!("Unable to read {}", config_file.display()))?;
 
-            let command = hook_config
-                .get("command")
-                .and_then(|c| c.as_str())
-                .unwrap_or("[directory hook]")
-                .to_string();
+            let json: Value = serde_json::from_str(&data)
+                .with_context(|| format!("Unable to parse JSON in {}", config_file.display()))?;
 
-            entries.push(HookEntry {
-                hook_type: "internal".to_string(),
-                matcher: if enabled {
-                    hook_name.clone()
+            let entries_obj = json
+                .get("hooks")
+                .and_then(|h| h.get("internal"))
+                .and_then(|i| i.get("entries"))
+                .and_then(|e| e.as_object());
+
+            let Some(entries_obj) = entries_obj else {
+                continue;
+            };
+
+            for (hook_name, hook_config) in entries_obj {
+                let enabled = hook_config
+                    .get("enabled")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(true);
+
+                // Check if hook directory exists
+                let hook_dir = install_dir.join("hooks").join(hook_name);
+                let has_handler = hook_dir.join("handler.ts").exists();
+
+                let command = if has_handler {
+                    format!("[directory hook: {}]", hook_dir.display())
                 } else {
-                    format!("{hook_name} (disabled)")
-                },
-                command,
-            });
+                    "[directory hook - handler missing]".to_string()
+                };
+
+                entries.push(HookEntry {
+                    hook_type: "internal".to_string(),
+                    matcher: if enabled {
+                        hook_name.clone()
+                    } else {
+                        format!("{hook_name} (disabled)")
+                    },
+                    command,
+                });
+            }
         }
 
         Ok(entries)
