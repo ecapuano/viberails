@@ -35,7 +35,11 @@ use serde_json::Value;
 #[cfg(test)]
 mod tests;
 
-const TOOL_HINTS: &[&str] = &["tool_input", "tool_name", "tool_use_id"];
+// Keys that indicate a tool use event from various providers:
+// - tool_input, tool_name, tool_use_id: Claude Code format
+// - tool: OpenClaw/Clawdbot plugin format (before_tool_call hook)
+//   Note: "parameters" is not included as it's too generic and could match non-tool events
+const TOOL_HINTS: &[&str] = &["tool_input", "tool_name", "tool_use_id", "tool"];
 
 /// Enum representing all supported providers.
 /// Used for callback command routing.

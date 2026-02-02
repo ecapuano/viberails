@@ -9,9 +9,13 @@ use crate::hooks::binary_location;
 use crate::providers::discovery::{DiscoveryResult, ProviderDiscovery, ProviderFactory};
 use crate::providers::{HookEntry, LLmProviderTrait};
 
-/// Clawdbot (now `OpenClaw`) uses a hooks system with directory-based handlers.
-/// We create a hook directory with HOOK.md and handler.ts files.
-pub const CLAWDBOT_HOOKS: &[&str] = &["hooks"];
+/// Clawdbot (now `OpenClaw`) uses a plugin system for tool interception.
+/// We create a plugin in the extensions directory with a manifest and handler.
+/// Note: Event-stream hooks (HOOK.md with `events: ["command"]`) only cover slash
+/// commands like /new, /reset, /stop. For tool call interception, we need
+/// plugin hooks (`before_tool_call`, `after_tool_call`) which are registered
+/// programmatically through the plugin system.
+pub const CLAWDBOT_HOOKS: &[&str] = &["plugin"];
 
 /// Discovery implementation for Clawdbot/OpenClaw.
 pub struct ClawdbotDiscovery;
@@ -120,126 +124,195 @@ impl Clawdbot {
         }
     }
 
-    /// Get the hook directory path for a given installation directory.
-    fn hook_dir(install_dir: &std::path::Path) -> PathBuf {
+    /// Get the plugin directory path for a given installation directory.
+    fn plugin_dir(install_dir: &std::path::Path) -> PathBuf {
+        install_dir.join("extensions").join(PROJECT_NAME)
+    }
+
+    /// Get the legacy hook directory path (for cleanup during migration).
+    fn legacy_hook_dir(install_dir: &std::path::Path) -> PathBuf {
         install_dir.join("hooks").join(PROJECT_NAME)
     }
 
-    /// Generate the HOOK.md content
-    pub(crate) fn generate_hook_md() -> String {
-        format!(
-            r#"---
-name: {PROJECT_NAME}
-description: "{PROJECT_NAME} security and compliance hook"
-metadata:
-  openclaw:
-    emoji: "🛡️"
-    events: ["command"]
-    requires:
-      bins: ["{PROJECT_NAME}"]
----
-
-# {PROJECT_NAME} Hook
-
-This hook integrates {PROJECT_NAME} with Clawdbot/OpenClaw for security and compliance monitoring.
-
-All command events are forwarded to {PROJECT_NAME} for policy evaluation.
-"#
-        )
+    /// Generate the plugin manifest JSON content.
+    /// Uses the appropriate manifest filename based on whether this is
+    /// `OpenClaw` (`openclaw.plugin.json`) or legacy Clawdbot (`clawdbot.plugin.json`).
+    pub(crate) fn generate_plugin_manifest() -> String {
+        serde_json::to_string_pretty(&json!({
+            "id": PROJECT_NAME,
+            "name": format!("{} Security Plugin", PROJECT_NAME),
+            "version": "1.0.0",
+            "description": format!("{} security and compliance monitoring for tool calls", PROJECT_NAME),
+            "main": "index.ts"
+        }))
+        .unwrap_or_default()
     }
 
-    /// Generate the handler.ts content
-    pub(crate) fn generate_handler_ts(&self) -> String {
+    /// Generate the plugin index.ts content that registers tool call hooks.
+    /// This uses the plugin API to register `before_tool_call` hooks, which
+    /// intercept tool calls before they are executed (unlike event-stream
+    /// hooks which only cover slash commands).
+    pub(crate) fn generate_plugin_index(&self) -> String {
         let binary_path = self.binary_path.display();
         format!(
-            r#"import type {{ HookHandler }} from "openclaw/hooks";
-import {{ spawn }} from "child_process";
+            r#"import {{ spawnSync }} from "child_process";
 
-const handler: HookHandler = async (event) => {{
-  // Forward all events to {PROJECT_NAME} for processing
+/**
+ * {PROJECT_NAME} Plugin for OpenClaw/Clawdbot
+ *
+ * This plugin intercepts tool calls (exec, Read, Write, etc.) for security
+ * and compliance monitoring. Unlike event-stream hooks (which only cover
+ * slash commands like /new, /reset), plugin hooks can intercept actual
+ * tool executions.
+ */
+
+interface ToolCallEvent {{
+  tool: string;
+  parameters: Record<string, unknown>;
+  sessionId?: string;
+}}
+
+interface ToolCallResult {{
+  allow: boolean;
+  reason?: string;
+  modifiedParameters?: Record<string, unknown>;
+}}
+
+interface PluginAPI {{
+  registerHook(hookName: string, handler: (event: unknown) => unknown): void;
+  // Legacy clawdbot uses addHook instead of registerHook
+  addHook?(hookName: string, handler: (event: unknown) => unknown): void;
+}}
+
+function callViberails(event: ToolCallEvent): ToolCallResult {{
   const eventJson = JSON.stringify(event);
 
-  return new Promise((resolve, reject) => {{
-    const proc = spawn("{binary_path}", ["clawdbot-callback"], {{
-      stdio: ["pipe", "pipe", "pipe"],
+  try {{
+    const result = spawnSync("{binary_path}", ["clawdbot-callback"], {{
+      input: eventJson,
+      encoding: "utf-8",
+      timeout: 30000, // 30 second timeout
     }});
 
-    let stdout = "";
-    let stderr = "";
+    if (result.error) {{
+      console.error(`[{PROJECT_NAME}] Spawn error: ${{result.error.message}}`);
+      return {{ allow: true }}; // Fail open on spawn errors
+    }}
 
-    proc.stdout.on("data", (data: Buffer) => {{
-      stdout += data.toString();
-    }});
+    if (result.status !== 0) {{
+      console.error(`[{PROJECT_NAME}] Process exited with code ${{result.status}}: ${{result.stderr}}`);
+      return {{ allow: true }}; // Fail open on process errors
+    }}
 
-    proc.stderr.on("data", (data: Buffer) => {{
-      stderr += data.toString();
-    }});
-
-    proc.on("close", (code: number | null) => {{
-      if (code !== 0) {{
-        console.error(`[{PROJECT_NAME}] Process exited with code ${{code}}: ${{stderr}}`);
-      }}
-
-      // Parse response if available
-      if (stdout.trim()) {{
-        try {{
-          const response = JSON.parse(stdout.trim());
-          if (response.decision === "block" && response.reason) {{
-            event.messages.push(`🛡️ {PROJECT_NAME}: ${{response.reason}}`);
-          }}
-        }} catch (e) {{
-          // Ignore parse errors, response may be empty for non-tool events
+    if (result.stdout?.trim()) {{
+      try {{
+        const response = JSON.parse(result.stdout.trim());
+        if (response.decision === "block") {{
+          return {{
+            allow: false,
+            reason: response.reason || "Blocked by {PROJECT_NAME} policy",
+          }};
         }}
+      }} catch (e) {{
+        // Ignore parse errors, response may be empty for allowed actions
       }}
-      resolve();
-    }});
+    }}
 
-    proc.on("error", (err: Error) => {{
-      console.error(`[{PROJECT_NAME}] Failed to spawn process: ${{err.message}}`);
-      resolve(); // Don't block on spawn errors
-    }});
+    return {{ allow: true }};
+  }} catch (e) {{
+    console.error(`[{PROJECT_NAME}] Exception: ${{e}}`);
+    return {{ allow: true }}; // Fail open on exceptions
+  }}
+}}
 
-    // Send event data to stdin
-    proc.stdin.write(eventJson);
-    proc.stdin.end();
-  }});
-}};
+export default function register(api: PluginAPI) {{
+  // Register before_tool_call hook to intercept tool executions
+  // This fires before any tool (exec, Read, Write, etc.) is executed
+  const hookHandler = (event: unknown) => {{
+    const toolEvent = event as ToolCallEvent;
 
-export default handler;
+    // Skip internal/system tools if needed
+    if (!toolEvent.tool) {{
+      return event;
+    }}
+
+    const result = callViberails(toolEvent);
+
+    if (!result.allow) {{
+      // Return a blocked response - the exact format depends on OpenClaw/Clawdbot version
+      // OpenClaw expects throwing or returning an error object
+      throw new Error(`🛡️ {PROJECT_NAME}: ${{result.reason}}`);
+    }}
+
+    // Return the original or modified event to allow the tool call to proceed
+    return result.modifiedParameters ? {{ ...toolEvent, parameters: result.modifiedParameters }} : event;
+  }};
+
+  // Try OpenClaw API first, fall back to legacy Clawdbot API
+  if (typeof api.registerHook === "function") {{
+    api.registerHook("before_tool_call", hookHandler);
+  }} else if (typeof api.addHook === "function") {{
+    api.addHook("before_tool_call", hookHandler);
+  }} else {{
+    console.warn("[{PROJECT_NAME}] Could not register hook: API method not found");
+  }}
+
+  console.log(`[{PROJECT_NAME}] Plugin loaded - monitoring tool calls`);
+}}
 "#
         )
     }
 
-    /// Install hook files into a specific directory
-    fn install_hook_files(&self, install_dir: &std::path::Path) -> Result<()> {
-        let hook_dir = Self::hook_dir(install_dir);
+    /// Install plugin files into a specific directory.
+    /// Also cleans up legacy hook files if they exist.
+    fn install_plugin_files(&self, install_dir: &std::path::Path, is_openclaw: bool) -> Result<()> {
+        // Clean up legacy hook directory if it exists (migration from old hook-based approach)
+        let legacy_dir = Self::legacy_hook_dir(install_dir);
+        if legacy_dir.exists() {
+            info!(
+                "Removing legacy hook directory at {} (migrating to plugin system)",
+                legacy_dir.display()
+            );
+            let _ = fs::remove_dir_all(&legacy_dir);
+        }
 
-        // Create hook directory
-        fs::create_dir_all(&hook_dir).with_context(|| {
-            format!("Unable to create hook directory at {}", hook_dir.display())
+        let plugin_dir = Self::plugin_dir(install_dir);
+
+        // Create plugin directory
+        fs::create_dir_all(&plugin_dir).with_context(|| {
+            format!(
+                "Unable to create plugin directory at {}",
+                plugin_dir.display()
+            )
         })?;
 
-        // Write HOOK.md
-        let hook_md_path = hook_dir.join("HOOK.md");
-        fs::write(&hook_md_path, Self::generate_hook_md()).with_context(|| {
-            format!("Unable to write HOOK.md at {}", hook_md_path.display())
+        // Write plugin manifest with appropriate filename
+        let manifest_name = if is_openclaw {
+            "openclaw.plugin.json"
+        } else {
+            "clawdbot.plugin.json"
+        };
+        let manifest_path = plugin_dir.join(manifest_name);
+        fs::write(&manifest_path, Self::generate_plugin_manifest()).with_context(|| {
+            format!("Unable to write {} at {}", manifest_name, manifest_path.display())
         })?;
 
-        // Write handler.ts
-        let handler_ts_path = hook_dir.join("handler.ts");
-        fs::write(&handler_ts_path, self.generate_handler_ts()).with_context(|| {
-            format!("Unable to write handler.ts at {}", handler_ts_path.display())
+        // Write index.ts
+        let index_path = plugin_dir.join("index.ts");
+        fs::write(&index_path, self.generate_plugin_index()).with_context(|| {
+            format!("Unable to write index.ts at {}", index_path.display())
         })?;
 
         info!(
-            "Installed {PROJECT_NAME} hook files at {}",
-            hook_dir.display()
+            "Installed {PROJECT_NAME} plugin at {}",
+            plugin_dir.display()
         );
 
         Ok(())
     }
 
-    /// Enable the hook in the config file
+    /// Enable the plugin in the config file.
+    /// Plugins are registered under "plugins.entries" in the config.
     fn enable_in_config(config_file: &std::path::Path) -> Result<()> {
         // Ensure config file exists
         if let Some(parent) = config_file.parent()
@@ -266,7 +339,7 @@ export default handler;
         let mut json: Value = serde_json::from_str(&data)
             .with_context(|| format!("Unable to parse JSON in {}", config_file.display()))?;
 
-        // Update config structure
+        // Update config structure for plugins
         let root = json.as_object_mut().ok_or_else(|| {
             anyhow!(
                 "Expected root of {} to be a JSON object",
@@ -274,50 +347,50 @@ export default handler;
             )
         })?;
 
-        let hooks_obj = root
-            .entry("hooks")
+        // Also clean up old hook entries if they exist (migration)
+        if let Some(hooks) = root.get_mut("hooks")
+            && let Some(internal) = hooks.get_mut("internal")
+            && let Some(entries) = internal.get_mut("entries")
+            && let Some(entries_obj) = entries.as_object_mut()
+            && entries_obj.remove(PROJECT_NAME).is_some()
+        {
+            info!(
+                "Removed legacy hook entry from {} (migrating to plugin)",
+                config_file.display()
+            );
+        }
+
+        // Add plugin entry
+        let plugins_obj = root
+            .entry("plugins")
             .or_insert_with(|| json!({}))
             .as_object_mut()
             .ok_or_else(|| {
                 anyhow!(
-                    "Expected 'hooks' field in {} to be an object",
+                    "Expected 'plugins' field in {} to be an object",
                     config_file.display()
                 )
             })?;
 
-        let internal_obj = hooks_obj
-            .entry("internal")
-            .or_insert_with(|| json!({"enabled": true, "entries": {}}))
-            .as_object_mut()
-            .ok_or_else(|| {
-                anyhow!(
-                    "Expected 'hooks.internal' field in {} to be an object",
-                    config_file.display()
-                )
-            })?;
-
-        // Ensure internal hooks are enabled
-        internal_obj.insert("enabled".to_string(), json!(true));
-
-        let entries_obj = internal_obj
+        let entries_obj = plugins_obj
             .entry("entries")
             .or_insert_with(|| json!({}))
             .as_object_mut()
             .ok_or_else(|| {
                 anyhow!(
-                    "Expected 'hooks.internal.entries' field in {} to be an object",
+                    "Expected 'plugins.entries' field in {} to be an object",
                     config_file.display()
                 )
             })?;
 
-        // Check if hook is already enabled
+        // Check if plugin is already enabled
         if entries_obj.get(PROJECT_NAME).is_some() {
             warn!(
-                "{PROJECT_NAME} hook already enabled in {}",
+                "{PROJECT_NAME} plugin already enabled in {}",
                 config_file.display()
             );
         } else {
-            // Add hook entry - only "enabled" is valid, no "command" key!
+            // Add plugin entry
             entries_obj.insert(PROJECT_NAME.to_string(), json!({ "enabled": true }));
         }
 
@@ -336,29 +409,47 @@ export default handler;
         fd.write_all(json_str.as_bytes())
             .with_context(|| format!("Failed to write to {}", config_file.display()))?;
 
-        info!("Enabled {PROJECT_NAME} hook in {}", config_file.display());
+        info!(
+            "Enabled {PROJECT_NAME} plugin in {}",
+            config_file.display()
+        );
 
         Ok(())
     }
 
-    /// Remove hook files from a specific directory
-    fn uninstall_hook_files(install_dir: &std::path::Path) -> Result<()> {
-        let hook_dir = Self::hook_dir(install_dir);
-
-        if hook_dir.exists() {
-            fs::remove_dir_all(&hook_dir).with_context(|| {
-                format!("Unable to remove hook directory at {}", hook_dir.display())
+    /// Remove plugin files from a specific directory.
+    /// Also removes legacy hook files if they exist.
+    fn uninstall_plugin_files(install_dir: &std::path::Path) -> Result<()> {
+        // Remove plugin directory
+        let plugin_dir = Self::plugin_dir(install_dir);
+        if plugin_dir.exists() {
+            fs::remove_dir_all(&plugin_dir).with_context(|| {
+                format!(
+                    "Unable to remove plugin directory at {}",
+                    plugin_dir.display()
+                )
             })?;
             info!(
-                "Removed {PROJECT_NAME} hook files from {}",
-                hook_dir.display()
+                "Removed {PROJECT_NAME} plugin from {}",
+                plugin_dir.display()
+            );
+        }
+
+        // Also remove legacy hook directory if it exists
+        let legacy_dir = Self::legacy_hook_dir(install_dir);
+        if legacy_dir.exists() {
+            let _ = fs::remove_dir_all(&legacy_dir);
+            info!(
+                "Removed legacy {PROJECT_NAME} hook from {}",
+                legacy_dir.display()
             );
         }
 
         Ok(())
     }
 
-    /// Disable the hook in the config file
+    /// Disable the plugin in the config file.
+    /// Also cleans up legacy hook entries if they exist.
     fn disable_in_config(config_file: &std::path::Path) -> Result<()> {
         if !config_file.exists() {
             return Ok(());
@@ -370,8 +461,23 @@ export default handler;
         let mut json: Value = serde_json::from_str(&data)
             .with_context(|| format!("Unable to parse JSON in {}", config_file.display()))?;
 
-        // Remove entry from config
-        let removed = json
+        let mut modified = false;
+
+        // Remove from plugins.entries
+        let removed_plugin = json
+            .as_object_mut()
+            .and_then(|root| root.get_mut("plugins"))
+            .and_then(|p| p.as_object_mut())
+            .and_then(|p| p.get_mut("entries"))
+            .and_then(|e| e.as_object_mut())
+            .and_then(|entries| entries.remove(PROJECT_NAME));
+
+        if removed_plugin.is_some() {
+            modified = true;
+        }
+
+        // Also remove legacy hook entry if it exists
+        let removed_hook = json
             .as_object_mut()
             .and_then(|root| root.get_mut("hooks"))
             .and_then(|h| h.as_object_mut())
@@ -381,9 +487,17 @@ export default handler;
             .and_then(|e| e.as_object_mut())
             .and_then(|entries| entries.remove(PROJECT_NAME));
 
-        if removed.is_none() {
+        if removed_hook.is_some() {
+            modified = true;
+            info!(
+                "Removed legacy hook entry from {}",
+                config_file.display()
+            );
+        }
+
+        if !modified {
             warn!(
-                "{PROJECT_NAME} hook not found in {}",
+                "{PROJECT_NAME} not found in {}",
                 config_file.display()
             );
             return Ok(());
@@ -405,7 +519,7 @@ export default handler;
             .with_context(|| format!("Failed to write to {}", config_file.display()))?;
 
         info!(
-            "Disabled {PROJECT_NAME} hook in {}",
+            "Disabled {PROJECT_NAME} plugin in {}",
             config_file.display()
         );
 
@@ -419,27 +533,19 @@ export default handler;
             anyhow!("Expected root to be a JSON object")
         })?;
 
-        let hooks_obj = root
-            .entry("hooks")
+        // Add plugin entry (new format)
+        let plugins_obj = root
+            .entry("plugins")
             .or_insert_with(|| json!({}))
             .as_object_mut()
-            .ok_or_else(|| anyhow!("Expected 'hooks' to be an object"))?;
+            .ok_or_else(|| anyhow!("Expected 'plugins' to be an object"))?;
 
-        let internal_obj = hooks_obj
-            .entry("internal")
-            .or_insert_with(|| json!({"enabled": true, "entries": {}}))
-            .as_object_mut()
-            .ok_or_else(|| anyhow!("Expected 'hooks.internal' to be an object"))?;
-
-        internal_obj.insert("enabled".to_string(), json!(true));
-
-        let entries_obj = internal_obj
+        let entries_obj = plugins_obj
             .entry("entries")
             .or_insert_with(|| json!({}))
             .as_object_mut()
-            .ok_or_else(|| anyhow!("Expected 'hooks.internal.entries' to be an object"))?;
+            .ok_or_else(|| anyhow!("Expected 'plugins.entries' to be an object"))?;
 
-        // Only add "enabled" - no "command" key!
         if entries_obj.get(PROJECT_NAME).is_none() {
             entries_obj.insert(PROJECT_NAME.to_string(), json!({ "enabled": true }));
         }
@@ -450,6 +556,16 @@ export default handler;
     /// For testing: uninstall from a specific JSON
     #[cfg(test)]
     pub(crate) fn uninstall_from(&self, _hook_type: &str, json: &mut Value) {
+        // Remove from plugins.entries (new format)
+        let _ = json
+            .as_object_mut()
+            .and_then(|root| root.get_mut("plugins"))
+            .and_then(|p| p.as_object_mut())
+            .and_then(|p| p.get_mut("entries"))
+            .and_then(|e| e.as_object_mut())
+            .and_then(|entries| entries.remove(PROJECT_NAME));
+
+        // Also remove from legacy hooks.internal.entries if present
         let _ = json
             .as_object_mut()
             .and_then(|root| root.get_mut("hooks"))
@@ -476,13 +592,14 @@ impl LLmProviderTrait for Clawdbot {
 
         // Install into all detected installations (both openclaw and clawdbot if present)
         for (install_dir, config_name) in detected_dirs {
+            let is_openclaw = config_name == "openclaw.json";
             info!(
-                "Installing {hook_type} in {}",
+                "Installing {hook_type} plugin in {}",
                 install_dir.display()
             );
 
-            // Install hook files (HOOK.md and handler.ts)
-            self.install_hook_files(&install_dir)?;
+            // Install plugin files (manifest and index.ts)
+            self.install_plugin_files(&install_dir, is_openclaw)?;
 
             // Enable in config
             let config_file = install_dir.join(config_name);
@@ -502,8 +619,8 @@ impl LLmProviderTrait for Clawdbot {
                 install_dir.display()
             );
 
-            // Remove hook files
-            Self::uninstall_hook_files(&install_dir)?;
+            // Remove plugin files (and legacy hook files)
+            Self::uninstall_plugin_files(&install_dir)?;
 
             // Disable in config
             let config_file = install_dir.join(config_name);
@@ -529,41 +646,73 @@ impl LLmProviderTrait for Clawdbot {
             let json: Value = serde_json::from_str(&data)
                 .with_context(|| format!("Unable to parse JSON in {}", config_file.display()))?;
 
-            let entries_obj = json
+            // Check plugins.entries (new format)
+            if let Some(entries_obj) = json
+                .get("plugins")
+                .and_then(|p| p.get("entries"))
+                .and_then(|e| e.as_object())
+            {
+                for (plugin_name, plugin_config) in entries_obj {
+                    let enabled = plugin_config
+                        .get("enabled")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(true);
+
+                    // Check if plugin directory exists
+                    let plugin_dir = install_dir.join("extensions").join(plugin_name);
+                    let has_index = plugin_dir.join("index.ts").exists();
+
+                    let command = if has_index {
+                        format!("[plugin: {}]", plugin_dir.display())
+                    } else {
+                        "[plugin - index.ts missing]".to_string()
+                    };
+
+                    entries.push(HookEntry {
+                        hook_type: "plugin".to_string(),
+                        matcher: if enabled {
+                            plugin_name.clone()
+                        } else {
+                            format!("{plugin_name} (disabled)")
+                        },
+                        command,
+                    });
+                }
+            }
+
+            // Also check legacy hooks.internal.entries format
+            if let Some(entries_obj) = json
                 .get("hooks")
                 .and_then(|h| h.get("internal"))
                 .and_then(|i| i.get("entries"))
-                .and_then(|e| e.as_object());
+                .and_then(|e| e.as_object())
+            {
+                for (hook_name, hook_config) in entries_obj {
+                    let enabled = hook_config
+                        .get("enabled")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(true);
 
-            let Some(entries_obj) = entries_obj else {
-                continue;
-            };
+                    // Check if hook directory exists
+                    let hook_dir = install_dir.join("hooks").join(hook_name);
+                    let has_handler = hook_dir.join("handler.ts").exists();
 
-            for (hook_name, hook_config) in entries_obj {
-                let enabled = hook_config
-                    .get("enabled")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(true);
-
-                // Check if hook directory exists
-                let hook_dir = install_dir.join("hooks").join(hook_name);
-                let has_handler = hook_dir.join("handler.ts").exists();
-
-                let command = if has_handler {
-                    format!("[directory hook: {}]", hook_dir.display())
-                } else {
-                    "[directory hook - handler missing]".to_string()
-                };
-
-                entries.push(HookEntry {
-                    hook_type: "internal".to_string(),
-                    matcher: if enabled {
-                        hook_name.clone()
+                    let command = if has_handler {
+                        format!("[legacy hook: {}]", hook_dir.display())
                     } else {
-                        format!("{hook_name} (disabled)")
-                    },
-                    command,
-                });
+                        "[legacy hook - handler missing]".to_string()
+                    };
+
+                    entries.push(HookEntry {
+                        hook_type: "internal (legacy)".to_string(),
+                        matcher: if enabled {
+                            hook_name.clone()
+                        } else {
+                            format!("{hook_name} (disabled)")
+                        },
+                        command,
+                    });
+                }
             }
         }
 

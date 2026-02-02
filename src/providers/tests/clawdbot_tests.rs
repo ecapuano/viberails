@@ -14,47 +14,40 @@ fn test_install_into_empty_json() {
     let clawdbot = make_clawdbot("/usr/bin/test-program");
     let mut json = json!({});
 
-    clawdbot.install_into("hooks", &mut json).unwrap();
+    clawdbot.install_into("plugin", &mut json).unwrap();
 
-    let hooks = &json["hooks"];
-    assert!(hooks.is_object());
-    let internal = &hooks["internal"];
-    assert!(internal["enabled"].as_bool().unwrap());
-    let entries = &internal["entries"];
+    let plugins = &json["plugins"];
+    assert!(plugins.is_object());
+    let entries = &plugins["entries"];
     assert!(entries.is_object());
     let entry = &entries[PROJECT_NAME];
     assert!(entry["enabled"].as_bool().unwrap());
-    // Directory-based hooks don't have a "command" key
-    assert!(entry.get("command").is_none());
 }
 
 #[test]
-fn test_install_into_existing_hooks() {
+fn test_install_into_existing_plugins() {
     let clawdbot = make_clawdbot("/usr/bin/test-program");
     let mut json = json!({
-        "hooks": {
-            "internal": {
-                "enabled": true,
-                "entries": {
-                    "other-hook": {
-                        "enabled": true
-                    }
+        "plugins": {
+            "entries": {
+                "other-plugin": {
+                    "enabled": true
                 }
             }
         }
     });
 
-    clawdbot.install_into("hooks", &mut json).unwrap();
+    clawdbot.install_into("plugin", &mut json).unwrap();
 
-    // Other hook should be preserved
+    // Other plugin should be preserved
     assert!(
-        json["hooks"]["internal"]["entries"]["other-hook"]["enabled"]
+        json["plugins"]["entries"]["other-plugin"]["enabled"]
             .as_bool()
             .unwrap()
     );
-    // Our hook should be added
+    // Our plugin should be added
     assert!(
-        json["hooks"]["internal"]["entries"][PROJECT_NAME]["enabled"]
+        json["plugins"]["entries"][PROJECT_NAME]["enabled"]
             .as_bool()
             .unwrap()
     );
@@ -64,46 +57,19 @@ fn test_install_into_existing_hooks() {
 fn test_install_into_skips_if_already_installed() {
     let clawdbot = make_clawdbot("/usr/bin/test-program");
     let mut json = json!({
-        "hooks": {
-            "internal": {
-                "enabled": true,
-                "entries": {
-                    PROJECT_NAME: {
-                        "enabled": true
-                    }
+        "plugins": {
+            "entries": {
+                PROJECT_NAME: {
+                    "enabled": true
                 }
             }
         }
     });
 
-    clawdbot.install_into("hooks", &mut json).unwrap();
+    clawdbot.install_into("plugin", &mut json).unwrap();
 
     // Should still have the same entry
-    assert!(json["hooks"]["internal"]["entries"][PROJECT_NAME].is_object());
-}
-
-#[test]
-fn test_install_into_preserves_existing_entry() {
-    let clawdbot = make_clawdbot("/usr/bin/test-program");
-    let mut json = json!({
-        "hooks": {
-            "internal": {
-                "enabled": false,
-                "entries": {
-                    PROJECT_NAME: {
-                        "enabled": false
-                    }
-                }
-            }
-        }
-    });
-
-    clawdbot.install_into("hooks", &mut json).unwrap();
-
-    // Entry should exist (won't overwrite existing)
-    assert!(json["hooks"]["internal"]["entries"][PROJECT_NAME].is_object());
-    // internal.enabled should be set to true
-    assert!(json["hooks"]["internal"]["enabled"].as_bool().unwrap());
+    assert!(json["plugins"]["entries"][PROJECT_NAME].is_object());
 }
 
 #[test]
@@ -115,13 +81,40 @@ fn test_install_into_preserves_other_config() {
         }
     });
 
-    clawdbot.install_into("hooks", &mut json).unwrap();
+    clawdbot.install_into("plugin", &mut json).unwrap();
 
     assert_eq!(json["agent"]["model"], "claude-3");
 }
 
 #[test]
-fn test_uninstall_from_removes_entry() {
+fn test_uninstall_from_removes_plugin_entry() {
+    let clawdbot = make_clawdbot("/usr/bin/test-program");
+    let mut json = json!({
+        "plugins": {
+            "entries": {
+                PROJECT_NAME: {
+                    "enabled": true
+                },
+                "other-plugin": {
+                    "enabled": true
+                }
+            }
+        }
+    });
+
+    clawdbot.uninstall_from("plugin", &mut json);
+
+    assert!(
+        json["plugins"]["entries"]
+            .get(PROJECT_NAME)
+            .is_none()
+    );
+    // Other plugin should be preserved
+    assert!(json["plugins"]["entries"]["other-plugin"].is_object());
+}
+
+#[test]
+fn test_uninstall_from_removes_legacy_hook_entry() {
     let clawdbot = make_clawdbot("/usr/bin/test-program");
     let mut json = json!({
         "hooks": {
@@ -139,8 +132,9 @@ fn test_uninstall_from_removes_entry() {
         }
     });
 
-    clawdbot.uninstall_from("hooks", &mut json);
+    clawdbot.uninstall_from("plugin", &mut json);
 
+    // Our hook should be removed
     assert!(
         json["hooks"]["internal"]["entries"]
             .get(PROJECT_NAME)
@@ -151,38 +145,21 @@ fn test_uninstall_from_removes_entry() {
 }
 
 #[test]
-fn test_uninstall_from_no_hooks() {
-    let clawdbot = make_clawdbot("/usr/bin/test-program");
-    let mut json = json!({});
-
-    // Should not panic
-    clawdbot.uninstall_from("hooks", &mut json);
-}
-
-#[test]
-fn test_uninstall_from_no_entries() {
+fn test_uninstall_from_removes_both_plugin_and_legacy_hook() {
     let clawdbot = make_clawdbot("/usr/bin/test-program");
     let mut json = json!({
-        "hooks": {
-            "internal": {
-                "enabled": true
+        "plugins": {
+            "entries": {
+                PROJECT_NAME: {
+                    "enabled": true
+                }
             }
-        }
-    });
-
-    // Should not panic
-    clawdbot.uninstall_from("hooks", &mut json);
-}
-
-#[test]
-fn test_uninstall_from_no_entry() {
-    let clawdbot = make_clawdbot("/usr/bin/test-program");
-    let mut json = json!({
+        },
         "hooks": {
             "internal": {
                 "enabled": true,
                 "entries": {
-                    "other-hook": {
+                    PROJECT_NAME: {
                         "enabled": true
                     }
                 }
@@ -190,12 +167,60 @@ fn test_uninstall_from_no_entry() {
         }
     });
 
-    // Should not panic
-    clawdbot.uninstall_from("hooks", &mut json);
+    clawdbot.uninstall_from("plugin", &mut json);
 
-    // Other hook should be unchanged
+    // Both should be removed
     assert!(
-        json["hooks"]["internal"]["entries"]["other-hook"]["enabled"]
+        json["plugins"]["entries"]
+            .get(PROJECT_NAME)
+            .is_none()
+    );
+    assert!(
+        json["hooks"]["internal"]["entries"]
+            .get(PROJECT_NAME)
+            .is_none()
+    );
+}
+
+#[test]
+fn test_uninstall_from_empty_json() {
+    let clawdbot = make_clawdbot("/usr/bin/test-program");
+    let mut json = json!({});
+
+    // Should not panic
+    clawdbot.uninstall_from("plugin", &mut json);
+}
+
+#[test]
+fn test_uninstall_from_no_entries() {
+    let clawdbot = make_clawdbot("/usr/bin/test-program");
+    let mut json = json!({
+        "plugins": {}
+    });
+
+    // Should not panic
+    clawdbot.uninstall_from("plugin", &mut json);
+}
+
+#[test]
+fn test_uninstall_from_no_entry() {
+    let clawdbot = make_clawdbot("/usr/bin/test-program");
+    let mut json = json!({
+        "plugins": {
+            "entries": {
+                "other-plugin": {
+                    "enabled": true
+                }
+            }
+        }
+    });
+
+    // Should not panic
+    clawdbot.uninstall_from("plugin", &mut json);
+
+    // Other plugin should be unchanged
+    assert!(
+        json["plugins"]["entries"]["other-plugin"]["enabled"]
             .as_bool()
             .unwrap()
     );
@@ -207,54 +232,69 @@ fn test_install_into_fails_on_non_object_root() {
     let clawdbot = make_clawdbot("/usr/bin/test-program");
     let mut json = json!([]);
 
-    let result = clawdbot.install_into("hooks", &mut json);
+    let result = clawdbot.install_into("plugin", &mut json);
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("JSON object"));
 }
 
 #[test]
-fn test_install_into_fails_on_hooks_not_object() {
+fn test_install_into_fails_on_plugins_not_object() {
     let clawdbot = make_clawdbot("/usr/bin/test-program");
     let mut json = json!({
-        "hooks": "not an object"
+        "plugins": "not an object"
     });
 
-    let result = clawdbot.install_into("hooks", &mut json);
+    let result = clawdbot.install_into("plugin", &mut json);
     assert!(result.is_err());
 }
 
 // Generated content tests
 #[test]
-fn test_generate_hook_md_contains_required_fields() {
-    use crate::providers::clawdbot::Clawdbot;
+fn test_generate_plugin_manifest_contains_required_fields() {
+    let manifest = Clawdbot::generate_plugin_manifest();
 
-    let hook_md = Clawdbot::generate_hook_md();
-
-    // Check YAML frontmatter markers
-    assert!(hook_md.starts_with("---\n"));
-    assert!(hook_md.contains("\n---\n"));
+    // Parse as JSON
+    let json: serde_json::Value = serde_json::from_str(&manifest).unwrap();
 
     // Check required fields
-    assert!(hook_md.contains("name:"));
-    assert!(hook_md.contains("description:"));
-    assert!(hook_md.contains("events:"));
-    assert!(hook_md.contains(crate::common::PROJECT_NAME));
+    assert!(json.get("id").is_some());
+    assert!(json.get("name").is_some());
+    assert!(json.get("version").is_some());
+    assert!(json.get("description").is_some());
+    assert!(json.get("main").is_some());
+
+    // Check PROJECT_NAME is used
+    assert_eq!(json["id"].as_str().unwrap(), PROJECT_NAME);
+    assert_eq!(json["main"].as_str().unwrap(), "index.ts");
 }
 
 #[test]
-fn test_generate_handler_ts_contains_binary_path() {
+fn test_generate_plugin_index_contains_binary_path() {
     let clawdbot = make_clawdbot("/custom/path/to/viberails");
 
-    let handler_ts = clawdbot.generate_handler_ts();
+    let index_ts = clawdbot.generate_plugin_index();
 
     // Check it contains the binary path
-    assert!(handler_ts.contains("/custom/path/to/viberails"));
+    assert!(index_ts.contains("/custom/path/to/viberails"));
     // Check it has the callback command
-    assert!(handler_ts.contains("clawdbot-callback"));
-    // Check it exports a default handler
-    assert!(handler_ts.contains("export default handler"));
-    // Check it imports HookHandler type
-    assert!(handler_ts.contains("HookHandler"));
+    assert!(index_ts.contains("clawdbot-callback"));
+    // Check it exports a default register function
+    assert!(index_ts.contains("export default function register"));
+    // Check it registers before_tool_call hook
+    assert!(index_ts.contains("before_tool_call"));
+    // Check it handles both OpenClaw and legacy Clawdbot API
+    assert!(index_ts.contains("registerHook"));
+    assert!(index_ts.contains("addHook"));
+}
+
+#[test]
+fn test_generate_plugin_index_uses_spawn_sync() {
+    let clawdbot = make_clawdbot("/usr/bin/viberails");
+
+    let index_ts = clawdbot.generate_plugin_index();
+
+    // Should use spawnSync for synchronous hook execution
+    assert!(index_ts.contains("spawnSync"));
 }
 
 // Discovery tests
@@ -283,5 +323,74 @@ fn test_clawdbot_discovery_supported_hooks() {
 
     let discovery = ClawdbotDiscovery;
     let hooks = discovery.supported_hooks();
-    assert!(hooks.contains(&"hooks"));
+    assert!(hooks.contains(&"plugin"));
+}
+
+// is_tool_use detection tests (using LLmProviderTrait)
+#[test]
+fn test_is_tool_use_detects_openclaw_format() {
+    use crate::providers::LLmProviderTrait;
+
+    let clawdbot = make_clawdbot("/usr/bin/test");
+
+    // OpenClaw/Clawdbot before_tool_call format uses "tool" key
+    let event = json!({
+        "tool": "exec",
+        "parameters": {
+            "command": "ls -la"
+        }
+    });
+
+    assert!(clawdbot.is_tool_use(&event));
+}
+
+#[test]
+fn test_is_tool_use_detects_claude_code_format() {
+    use crate::providers::LLmProviderTrait;
+
+    let clawdbot = make_clawdbot("/usr/bin/test");
+
+    // Claude Code format uses tool_name/tool_input
+    let event = json!({
+        "tool_name": "bash",
+        "tool_input": {
+            "command": "ls -la"
+        },
+        "tool_use_id": "toolu_123"
+    });
+
+    assert!(clawdbot.is_tool_use(&event));
+}
+
+#[test]
+fn test_is_tool_use_rejects_non_tool_event() {
+    use crate::providers::LLmProviderTrait;
+
+    let clawdbot = make_clawdbot("/usr/bin/test");
+
+    // Regular message without tool keys
+    let event = json!({
+        "type": "message",
+        "content": "Hello world"
+    });
+
+    assert!(!clawdbot.is_tool_use(&event));
+}
+
+#[test]
+fn test_is_tool_use_rejects_parameters_only() {
+    use crate::providers::LLmProviderTrait;
+
+    let clawdbot = make_clawdbot("/usr/bin/test");
+
+    // Event with just "parameters" shouldn't be detected as tool use
+    // (too generic, could be any kind of event)
+    let event = json!({
+        "type": "config",
+        "parameters": {
+            "setting": "value"
+        }
+    });
+
+    assert!(!clawdbot.is_tool_use(&event));
 }
