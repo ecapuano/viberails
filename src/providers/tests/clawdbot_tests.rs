@@ -114,75 +114,6 @@ fn test_uninstall_from_removes_plugin_entry() {
 }
 
 #[test]
-fn test_uninstall_from_removes_legacy_hook_entry() {
-    let clawdbot = make_clawdbot("/usr/bin/test-program");
-    let mut json = json!({
-        "hooks": {
-            "internal": {
-                "enabled": true,
-                "entries": {
-                    PROJECT_NAME: {
-                        "enabled": true
-                    },
-                    "other-hook": {
-                        "enabled": true
-                    }
-                }
-            }
-        }
-    });
-
-    clawdbot.uninstall_from("plugin", &mut json);
-
-    // Our hook should be removed
-    assert!(
-        json["hooks"]["internal"]["entries"]
-            .get(PROJECT_NAME)
-            .is_none()
-    );
-    // Other hook should be preserved
-    assert!(json["hooks"]["internal"]["entries"]["other-hook"].is_object());
-}
-
-#[test]
-fn test_uninstall_from_removes_both_plugin_and_legacy_hook() {
-    let clawdbot = make_clawdbot("/usr/bin/test-program");
-    let mut json = json!({
-        "plugins": {
-            "entries": {
-                PROJECT_NAME: {
-                    "enabled": true
-                }
-            }
-        },
-        "hooks": {
-            "internal": {
-                "enabled": true,
-                "entries": {
-                    PROJECT_NAME: {
-                        "enabled": true
-                    }
-                }
-            }
-        }
-    });
-
-    clawdbot.uninstall_from("plugin", &mut json);
-
-    // Both should be removed
-    assert!(
-        json["plugins"]["entries"]
-            .get(PROJECT_NAME)
-            .is_none()
-    );
-    assert!(
-        json["hooks"]["internal"]["entries"]
-            .get(PROJECT_NAME)
-            .is_none()
-    );
-}
-
-#[test]
 fn test_uninstall_from_empty_json() {
     let clawdbot = make_clawdbot("/usr/bin/test-program");
     let mut json = json!({});
@@ -282,7 +213,7 @@ fn test_generate_plugin_index_contains_binary_path() {
     assert!(index_ts.contains("export default function register"));
     // Check it registers before_tool_call hook
     assert!(index_ts.contains("before_tool_call"));
-    // Check it handles both OpenClaw and legacy Clawdbot API
+    // Check it handles both OpenClaw and Clawdbot API
     assert!(index_ts.contains("registerHook"));
     assert!(index_ts.contains("addHook"));
 }

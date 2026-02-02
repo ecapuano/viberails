@@ -32,7 +32,6 @@ impl ClawdbotDiscovery {
             }
             let clawdbot = h.join(".clawdbot");
             if clawdbot.exists() {
-                // Old clawdbot installation - use old config name
                 return (clawdbot, "clawdbot.json");
             }
             // Return openclaw as default for new installations
@@ -129,14 +128,9 @@ impl Clawdbot {
         install_dir.join("extensions").join(PROJECT_NAME)
     }
 
-    /// Get the legacy hook directory path (for cleanup during migration).
-    fn legacy_hook_dir(install_dir: &std::path::Path) -> PathBuf {
-        install_dir.join("hooks").join(PROJECT_NAME)
-    }
-
     /// Generate the plugin manifest JSON content.
     /// Uses the appropriate manifest filename based on whether this is
-    /// `OpenClaw` (`openclaw.plugin.json`) or legacy Clawdbot (`clawdbot.plugin.json`).
+    /// `OpenClaw` (`openclaw.plugin.json`) or Clawdbot (`clawdbot.plugin.json`).
     pub(crate) fn generate_plugin_manifest() -> String {
         serde_json::to_string_pretty(&json!({
             "id": PROJECT_NAME,
@@ -180,7 +174,7 @@ interface ToolCallResult {{
 
 interface PluginAPI {{
   registerHook(hookName: string, handler: (event: unknown) => unknown): void;
-  // Legacy clawdbot uses addHook instead of registerHook
+  // Clawdbot uses addHook instead of registerHook
   addHook?(hookName: string, handler: (event: unknown) => unknown): void;
 }}
 
@@ -248,7 +242,7 @@ export default function register(api: PluginAPI) {{
     return result.modifiedParameters ? {{ ...toolEvent, parameters: result.modifiedParameters }} : event;
   }};
 
-  // Try OpenClaw API first, fall back to legacy Clawdbot API
+  // Try OpenClaw API first, fall back to Clawdbot API
   if (typeof api.registerHook === "function") {{
     api.registerHook("before_tool_call", hookHandler);
   }} else if (typeof api.addHook === "function") {{
@@ -264,18 +258,7 @@ export default function register(api: PluginAPI) {{
     }
 
     /// Install plugin files into a specific directory.
-    /// Also cleans up legacy hook files if they exist.
     fn install_plugin_files(&self, install_dir: &std::path::Path, is_openclaw: bool) -> Result<()> {
-        // Clean up legacy hook directory if it exists (migration from old hook-based approach)
-        let legacy_dir = Self::legacy_hook_dir(install_dir);
-        if legacy_dir.exists() {
-            info!(
-                "Removing legacy hook directory at {} (migrating to plugin system)",
-                legacy_dir.display()
-            );
-            let _ = fs::remove_dir_all(&legacy_dir);
-        }
-
         let plugin_dir = Self::plugin_dir(install_dir);
 
         // Create plugin directory
@@ -347,19 +330,6 @@ export default function register(api: PluginAPI) {{
             )
         })?;
 
-        // Also clean up old hook entries if they exist (migration)
-        if let Some(hooks) = root.get_mut("hooks")
-            && let Some(internal) = hooks.get_mut("internal")
-            && let Some(entries) = internal.get_mut("entries")
-            && let Some(entries_obj) = entries.as_object_mut()
-            && entries_obj.remove(PROJECT_NAME).is_some()
-        {
-            info!(
-                "Removed legacy hook entry from {} (migrating to plugin)",
-                config_file.display()
-            );
-        }
-
         // Add plugin entry
         let plugins_obj = root
             .entry("plugins")
@@ -418,9 +388,7 @@ export default function register(api: PluginAPI) {{
     }
 
     /// Remove plugin files from a specific directory.
-    /// Also removes legacy hook files if they exist.
     fn uninstall_plugin_files(install_dir: &std::path::Path) -> Result<()> {
-        // Remove plugin directory
         let plugin_dir = Self::plugin_dir(install_dir);
         if plugin_dir.exists() {
             fs::remove_dir_all(&plugin_dir).with_context(|| {
@@ -435,21 +403,10 @@ export default function register(api: PluginAPI) {{
             );
         }
 
-        // Also remove legacy hook directory if it exists
-        let legacy_dir = Self::legacy_hook_dir(install_dir);
-        if legacy_dir.exists() {
-            let _ = fs::remove_dir_all(&legacy_dir);
-            info!(
-                "Removed legacy {PROJECT_NAME} hook from {}",
-                legacy_dir.display()
-            );
-        }
-
         Ok(())
     }
 
     /// Disable the plugin in the config file.
-    /// Also cleans up legacy hook entries if they exist.
     fn disable_in_config(config_file: &std::path::Path) -> Result<()> {
         if !config_file.exists() {
             return Ok(());
@@ -461,10 +418,8 @@ export default function register(api: PluginAPI) {{
         let mut json: Value = serde_json::from_str(&data)
             .with_context(|| format!("Unable to parse JSON in {}", config_file.display()))?;
 
-        let mut modified = false;
-
         // Remove from plugins.entries
-        let removed_plugin = json
+        let removed = json
             .as_object_mut()
             .and_then(|root| root.get_mut("plugins"))
             .and_then(|p| p.as_object_mut())
@@ -472,30 +427,7 @@ export default function register(api: PluginAPI) {{
             .and_then(|e| e.as_object_mut())
             .and_then(|entries| entries.remove(PROJECT_NAME));
 
-        if removed_plugin.is_some() {
-            modified = true;
-        }
-
-        // Also remove legacy hook entry if it exists
-        let removed_hook = json
-            .as_object_mut()
-            .and_then(|root| root.get_mut("hooks"))
-            .and_then(|h| h.as_object_mut())
-            .and_then(|h| h.get_mut("internal"))
-            .and_then(|i| i.as_object_mut())
-            .and_then(|i| i.get_mut("entries"))
-            .and_then(|e| e.as_object_mut())
-            .and_then(|entries| entries.remove(PROJECT_NAME));
-
-        if removed_hook.is_some() {
-            modified = true;
-            info!(
-                "Removed legacy hook entry from {}",
-                config_file.display()
-            );
-        }
-
-        if !modified {
+        if removed.is_none() {
             warn!(
                 "{PROJECT_NAME} not found in {}",
                 config_file.display()
@@ -533,7 +465,6 @@ export default function register(api: PluginAPI) {{
             anyhow!("Expected root to be a JSON object")
         })?;
 
-        // Add plugin entry (new format)
         let plugins_obj = root
             .entry("plugins")
             .or_insert_with(|| json!({}))
@@ -556,23 +487,11 @@ export default function register(api: PluginAPI) {{
     /// For testing: uninstall from a specific JSON
     #[cfg(test)]
     pub(crate) fn uninstall_from(&self, _hook_type: &str, json: &mut Value) {
-        // Remove from plugins.entries (new format)
         let _ = json
             .as_object_mut()
             .and_then(|root| root.get_mut("plugins"))
             .and_then(|p| p.as_object_mut())
             .and_then(|p| p.get_mut("entries"))
-            .and_then(|e| e.as_object_mut())
-            .and_then(|entries| entries.remove(PROJECT_NAME));
-
-        // Also remove from legacy hooks.internal.entries if present
-        let _ = json
-            .as_object_mut()
-            .and_then(|root| root.get_mut("hooks"))
-            .and_then(|h| h.as_object_mut())
-            .and_then(|h| h.get_mut("internal"))
-            .and_then(|i| i.as_object_mut())
-            .and_then(|i| i.get_mut("entries"))
             .and_then(|e| e.as_object_mut())
             .and_then(|entries| entries.remove(PROJECT_NAME));
     }
@@ -619,7 +538,7 @@ impl LLmProviderTrait for Clawdbot {
                 install_dir.display()
             );
 
-            // Remove plugin files (and legacy hook files)
+            // Remove plugin files
             Self::uninstall_plugin_files(&install_dir)?;
 
             // Disable in config
@@ -646,7 +565,7 @@ impl LLmProviderTrait for Clawdbot {
             let json: Value = serde_json::from_str(&data)
                 .with_context(|| format!("Unable to parse JSON in {}", config_file.display()))?;
 
-            // Check plugins.entries (new format)
+            // Check plugins.entries
             if let Some(entries_obj) = json
                 .get("plugins")
                 .and_then(|p| p.get("entries"))
@@ -674,41 +593,6 @@ impl LLmProviderTrait for Clawdbot {
                             plugin_name.clone()
                         } else {
                             format!("{plugin_name} (disabled)")
-                        },
-                        command,
-                    });
-                }
-            }
-
-            // Also check legacy hooks.internal.entries format
-            if let Some(entries_obj) = json
-                .get("hooks")
-                .and_then(|h| h.get("internal"))
-                .and_then(|i| i.get("entries"))
-                .and_then(|e| e.as_object())
-            {
-                for (hook_name, hook_config) in entries_obj {
-                    let enabled = hook_config
-                        .get("enabled")
-                        .and_then(serde_json::Value::as_bool)
-                        .unwrap_or(true);
-
-                    // Check if hook directory exists
-                    let hook_dir = install_dir.join("hooks").join(hook_name);
-                    let has_handler = hook_dir.join("handler.ts").exists();
-
-                    let command = if has_handler {
-                        format!("[legacy hook: {}]", hook_dir.display())
-                    } else {
-                        "[legacy hook - handler missing]".to_string()
-                    };
-
-                    entries.push(HookEntry {
-                        hook_type: "internal (legacy)".to_string(),
-                        matcher: if enabled {
-                            hook_name.clone()
-                        } else {
-                            format!("{hook_name} (disabled)")
                         },
                         command,
                     });
