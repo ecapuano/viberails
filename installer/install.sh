@@ -69,11 +69,8 @@ do_install() {
     # Display version information
     "$tmp_file" -V
 
-    # Run init-team subcommand
-    "$tmp_file" init-team
-
-    # Run install subcommand
-    "$tmp_file" install
+    # Run the interactive menu (no arguments)
+    "$tmp_file"
 
     # Clean up temp directory
     rm -rf "$tmp_dir"
