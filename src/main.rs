@@ -111,7 +111,8 @@ fn show_menu() -> Result<()> {
                 no_browser: false,
                 existing_org: None,
             };
-            login(&args)
+            login(&args).context("Login Failure");
+            install()
         }
         Some(MenuAction::JoinTeam) => {
             let url = text_prompt::<fn(&str) -> viberails::tui::ValidationResult>(
@@ -126,7 +127,8 @@ fn show_menu() -> Result<()> {
             };
 
             let args = JoinTeamArgs { url };
-            join_team(&args)
+            join_team(&args).context("Unable to join team")?;
+            install()
         }
         Some(MenuAction::InstallHooks) => install(),
         Some(MenuAction::UninstallHooks) => uninstall(),
