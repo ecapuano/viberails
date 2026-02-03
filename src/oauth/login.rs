@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use colored::Colorize;
 use log::info;
 
@@ -423,7 +423,7 @@ fn create_web_hook(oid: &str, jwt: &str, install_id: &str) -> Result<String> {
 pub fn login(args: &LoginArgs) -> Result<()> {
     // Ask user to select OAuth provider
     let Some(provider) = query_oauth_provider()? else {
-        return Ok(());
+        bail!("Invalid Oauth provider");
     };
 
     println!("\n{}", "Starting authentication...".cyan());
@@ -559,18 +559,26 @@ fn print_success_message(org_name: &str, oid: &str, webhook_url: &str) {
     println!();
     println!("  {} Setup complete!", "✓".green().bold());
     println!();
-    println!("  {}", "┌────────────────────────────────────────────────────────┐".yellow());
-    println!("  {}  {}: {}",
+    println!(
+        "  {}",
+        "┌────────────────────────────────────────────────────────┐".yellow()
+    );
+    println!(
+        "  {}  {}: {}",
         "│".yellow(),
         "Team".white().bold(),
         org_name.cyan().bold()
     );
-    println!("  {}  {}: {}",
+    println!(
+        "  {}  {}: {}",
         "│".yellow(),
         "View".white().bold(),
         team_url.yellow().bold().underline()
     );
-    println!("  {}", "└────────────────────────────────────────────────────────┘".yellow());
+    println!(
+        "  {}",
+        "└────────────────────────────────────────────────────────┘".yellow()
+    );
     println!();
     println!("  {}", "─".repeat(60).as_str().dimmed());
     println!();
