@@ -8,7 +8,7 @@ use colored::Colorize;
 use log::{error, info, warn};
 
 use crate::{
-    common::{EXECUTABLE_NAME, display_authorize_help, print_header},
+    common::{EXECUTABLE_NAME, display_authorize_help, print_header, project_config_dir},
     config::Config,
     providers::{ProviderRegistry, select_providers, select_providers_for_uninstall},
 };
@@ -136,6 +136,22 @@ fn uninstall_binary(dst: &Path) -> Result<()> {
     Ok(())
 }
 
+fn uninstall_config() -> Result<()> {
+    let config_dir = project_config_dir()?;
+
+    if !config_dir.exists() {
+        warn!("Config directory {} doesn't exist", config_dir.display());
+        return Ok(());
+    }
+
+    fs::remove_dir_all(&config_dir)
+        .with_context(|| format!("Unable to delete config directory {}", config_dir.display()))?;
+
+    info!("Config directory {} was deleted", config_dir.display());
+
+    Ok(())
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC
 ////////////////////////////////////////////////////////////////////////////////
@@ -242,6 +258,49 @@ pub fn install() -> Result<()> {
     Ok(())
 }
 
+/// Uninstall hooks only, keeping the binary installed.
+///
+/// This allows users to remove hooks from selected providers while
+/// keeping the binary available for future use.
+pub fn uninstall_hooks() -> Result<()> {
+    //
+    // Create the registry and let the user select providers to uninstall from
+    //
+    let registry = ProviderRegistry::new();
+
+    let selection = select_providers_for_uninstall(&registry)?;
+
+    let Some(selection) = selection else {
+        println!("Uninstallation cancelled.");
+        return Ok(());
+    };
+
+    if selection.selected_ids.is_empty() {
+        println!("No providers selected.");
+        return Ok(());
+    }
+
+    //
+    // Uninstall hooks for each selected provider
+    //
+    let mut all_results = Vec::new();
+
+    for provider_id in &selection.selected_ids {
+        let results = uninstall_hooks_for_provider(&registry, provider_id);
+        all_results.extend(results);
+    }
+
+    display_results(&all_results);
+
+    println!("\nHooks removed. Binary retained for future use.");
+
+    Ok(())
+}
+
+/// Fully uninstall: remove hooks and delete the binary.
+///
+/// This performs a complete uninstallation by removing hooks from
+/// selected providers and deleting the binary if all hooks are removed.
 pub fn uninstall() -> Result<()> {
     let mut success = true;
     let dst = binary_location()?;
@@ -294,8 +353,10 @@ pub fn uninstall() -> Result<()> {
             error!("Unable to delete binary ({e}");
             success = false;
         }
-        // Note: We intentionally preserve the config (including team membership)
-        // so users can reinstall without needing to rejoin their team.
+        if let Err(e) = uninstall_config() {
+            error!("Unable to delete config ({e}");
+            success = false;
+        }
     } else {
         println!(
             "\nHooks removed from selected tools. Binary and config retained for remaining tools."

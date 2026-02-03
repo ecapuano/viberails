@@ -1,10 +1,14 @@
 //! Reusable TUI components for user prompts.
 
+mod config_view;
+mod message;
 mod multiselect;
 mod progress;
 mod select;
 mod text_input;
 
+pub use config_view::{ConfigEntry, ConfigView};
+pub use message::{Message, MessageStyle};
 pub use multiselect::{MultiSelect, MultiSelectItem};
 pub use progress::{Progress, ProgressHandle};
 pub use select::{Select, SelectItem};

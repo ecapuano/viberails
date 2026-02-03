@@ -10,8 +10,8 @@ pub mod tui;
 mod upgrade;
 
 pub use common::{PROJECT_NAME, PROJECT_VERSION};
-pub use config::{JoinTeamArgs, join_team, show_configuration};
-pub use hooks::{codex_hook, hook, install, list, uninstall};
+pub use config::{JoinTeamArgs, is_authorized, join_team, show_configuration};
+pub use hooks::{codex_hook, hook, install, list, uninstall, uninstall_hooks};
 pub use logging::Logging;
 pub use oauth::{LoginArgs, login::login};
 pub use providers::Providers;
@@ -30,9 +30,11 @@ pub enum MenuAction {
     JoinTeam,
     InstallHooks,
     UninstallHooks,
+    UninstallFully,
     ListHooks,
     ShowConfiguration,
     Upgrade,
+    Quit,
 }
 
 /// Returns all available menu options
@@ -56,6 +58,10 @@ pub fn get_menu_options() -> Vec<MenuOption> {
             action: MenuAction::UninstallHooks,
         },
         MenuOption {
+            label: "Uninstall Fully (hooks + binary)",
+            action: MenuAction::UninstallFully,
+        },
+        MenuOption {
             label: "List Hooks",
             action: MenuAction::ListHooks,
         },
@@ -66,6 +72,10 @@ pub fn get_menu_options() -> Vec<MenuOption> {
         MenuOption {
             label: "Upgrade",
             action: MenuAction::Upgrade,
+        },
+        MenuOption {
+            label: "Quit",
+            action: MenuAction::Quit,
         },
     ]
 }

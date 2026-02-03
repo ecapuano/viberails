@@ -7,7 +7,8 @@ use std::io::{self, Write};
 use colored::Colorize;
 
 use super::components::{
-    MultiSelect, MultiSelectItem, PromptResult, Select, SelectItem, ValidationResult,
+    Message, MessageStyle, MultiSelect, MultiSelectItem, PromptResult, Select, SelectItem,
+    ValidationResult,
 };
 
 /// Creates a simple inline text input prompt.
@@ -175,4 +176,26 @@ where
     } else {
         prompt.prompt()
     }
+}
+
+/// Displays a message to the user and waits for acknowledgment.
+///
+/// # Arguments
+///
+/// * `title` - The message box title
+/// * `message` - The message to display
+/// * `style` - The style of the message (Info, Error, or Success)
+///
+/// # Returns
+///
+/// - `Ok(())` - User acknowledged the message
+/// - `Err(_)` - Terminal error
+///
+/// # Example
+///
+/// ```ignore
+/// message_prompt("Error", "Not logged in", MessageStyle::Error)?;
+/// ```
+pub fn message_prompt(title: &str, message: &str, style: MessageStyle) -> io::Result<()> {
+    Message::new(title, message).with_style(style).show()
 }

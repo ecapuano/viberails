@@ -1,13 +1,19 @@
+use std::io::{self, Write};
+
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use crossterm::{
+    event::{self, Event, KeyEventKind},
+    terminal::{disable_raw_mode, enable_raw_mode},
+};
 use log::warn;
 
 use viberails::{
     JoinTeamArgs, Logging, LoginArgs, MenuAction, PROJECT_NAME, PROJECT_VERSION, Providers,
-    codex_hook, get_menu_options, hook, install, join_team, list, login, poll_upgrade,
-    show_configuration,
-    tui::{select_prompt, text_prompt},
-    uninstall, upgrade,
+    codex_hook, get_menu_options, hook, install, is_authorized, join_team, list, login,
+    poll_upgrade, show_configuration,
+    tui::{MessageStyle, message_prompt, select_prompt, text_prompt},
+    uninstall, uninstall_hooks, upgrade,
 };
 
 #[derive(Parser)]
@@ -85,60 +91,115 @@ fn init_logging(verbose: bool) -> Result<()> {
     }
 }
 
-/// Display the interactive menu and execute the selected action
+/// Wait for user to press any key before continuing.
+/// Used to let users see output before returning to the menu.
+fn wait_for_keypress() {
+    print!("\nPress any key to continue...");
+    let _ = io::stdout().flush();
+
+    // Enable raw mode to capture single keypress
+    if enable_raw_mode().is_ok() {
+        loop {
+            if let Ok(Event::Key(key)) = event::read()
+                && key.kind == KeyEventKind::Press
+            {
+                break;
+            }
+        }
+        let _ = disable_raw_mode();
+    }
+    println!();
+}
+
+/// Display the interactive menu and execute the selected action in a loop
 fn show_menu() -> Result<()> {
-    let options = get_menu_options();
-    let labels: Vec<&str> = options.iter().map(|o| o.label).collect();
+    loop {
+        let options = get_menu_options();
+        let labels: Vec<&str> = options.iter().map(|o| o.label).collect();
 
-    let selection_idx = select_prompt(
-        "What would you like to do?",
-        labels,
-        Some("↑↓ navigate, Enter select, Esc cancel"),
-    )
-    .context("Failed to read menu selection")?;
+        let selection_idx = select_prompt(
+            "What would you like to do?",
+            labels,
+            Some("↑↓ navigate, Enter select, Esc cancel"),
+        )
+        .context("Failed to read menu selection")?;
 
-    // Handle cancellation
-    let Some(idx) = selection_idx else {
-        return Ok(());
-    };
+        // Handle cancellation (Esc) - exit the loop
+        let Some(idx) = selection_idx else {
+            return Ok(());
+        };
 
-    // Get the action for the selected index
-    let action = options.get(idx).map(|o| o.action);
+        // Get the action for the selected index
+        let action = options.get(idx).map(|o| o.action);
 
-    match action {
-        Some(MenuAction::InitializeTeam) => {
-            let args = LoginArgs {
-                no_browser: false,
-                existing_org: None,
-            };
-            login(&args).context("Login Failure")?;
-            install()
-        }
-        Some(MenuAction::JoinTeam) => {
-            let url = text_prompt::<fn(&str) -> viberails::tui::ValidationResult>(
-                "Enter the team URL:",
-                Some("Enter to submit, Esc to cancel"),
-                None,
-            )
-            .context("Failed to read team URL")?;
+        let result = match action {
+            Some(MenuAction::InitializeTeam) => {
+                let args = LoginArgs {
+                    no_browser: false,
+                    existing_org: None,
+                };
+                login(&args).context("Login Failure")?;
+                install()
+            }
+            Some(MenuAction::JoinTeam) => {
+                let url = text_prompt::<fn(&str) -> viberails::tui::ValidationResult>(
+                    "Enter the team URL:",
+                    Some("Enter to submit, Esc to cancel"),
+                    None,
+                )
+                .context("Failed to read team URL")?;
 
-            let Some(url) = url else {
-                return Ok(());
-            };
+                let Some(url) = url else {
+                    continue; // User cancelled, show menu again
+                };
 
-            let args = JoinTeamArgs { url };
-            join_team(&args).context("Unable to join team")?;
-            install()
-        }
-        Some(MenuAction::InstallHooks) => install(),
-        Some(MenuAction::UninstallHooks) => uninstall(),
-        Some(MenuAction::ListHooks) => {
-            list();
-            Ok(())
-        }
-        Some(MenuAction::ShowConfiguration) => show_configuration(),
-        Some(MenuAction::Upgrade) => upgrade(),
-        None => Ok(()),
+                let args = JoinTeamArgs { url };
+                join_team(&args).context("Unable to join team")?;
+                install()
+            }
+            Some(MenuAction::InstallHooks) => {
+                if !is_authorized() {
+                    let _ = message_prompt(
+                        " Not Logged In ",
+                        "Please initialize or join a team first",
+                        MessageStyle::Error,
+                    );
+                    continue;
+                }
+                let r = install();
+                wait_for_keypress();
+                r
+            }
+            Some(MenuAction::UninstallHooks) => {
+                let r = uninstall_hooks();
+                wait_for_keypress();
+                r
+            }
+            Some(MenuAction::UninstallFully) => {
+                let r = uninstall();
+                wait_for_keypress();
+                r
+            }
+            Some(MenuAction::ListHooks) => {
+                list();
+                wait_for_keypress();
+                Ok(())
+            }
+            Some(MenuAction::ShowConfiguration) => {
+                let r = show_configuration();
+                wait_for_keypress();
+                r
+            }
+            Some(MenuAction::Upgrade) => {
+                let r = upgrade();
+                wait_for_keypress();
+                r
+            }
+            Some(MenuAction::Quit) | None => return Ok(()),
+        };
+
+        // If an action failed, propagate the error
+        result?;
     }
 }
 

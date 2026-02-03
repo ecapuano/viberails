@@ -11,6 +11,8 @@ mod prompts;
 mod theme;
 
 pub use app::TerminalApp;
-pub use components::{Progress, ProgressHandle, PromptResult, ValidationResult};
-pub use prompts::{multiselect_prompt, select_prompt, text_prompt};
+pub use components::{
+    ConfigEntry, ConfigView, MessageStyle, Progress, ProgressHandle, PromptResult, ValidationResult,
+};
+pub use prompts::{message_prompt, multiselect_prompt, select_prompt, text_prompt};
 pub use theme::Theme;

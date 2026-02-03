@@ -1,18 +1,15 @@
 use std::{fs, io::Write, path::Path};
 
+use crate::tui::{ConfigEntry, ConfigView};
 use anyhow::{Context, Result};
 use bon::Builder;
 use log::info;
 use serde::{Deserialize, Serialize};
-use tabled::{
-    Table, Tabled,
-    settings::{Margin, Rotate, Style},
-};
 use uuid::Uuid;
 
 use crate::{
     PROJECT_NAME,
-    common::{print_header, project_config_dir},
+    common::project_config_dir,
     hooks::{binary_location, install_binary},
 };
 
@@ -88,29 +85,6 @@ pub struct Config {
     pub org: LcOrg,
 }
 
-#[derive(Tabled)]
-struct ConfigDisplay<'a> {
-    fail_open: bool,
-    audit_tool_use: bool,
-    audit_prompts: bool,
-    install_id: &'a str,
-    org_name: &'a str,
-    org_url: &'a str,
-}
-
-impl<'a> From<&'a Config> for ConfigDisplay<'a> {
-    fn from(config: &'a Config) -> Self {
-        Self {
-            fail_open: config.user.fail_open,
-            audit_tool_use: config.user.audit_tool_use,
-            audit_prompts: config.user.audit_prompts,
-            install_id: &config.install_id,
-            org_name: &config.org.name,
-            org_url: &config.org.url,
-        }
-    }
-}
-
 impl Config {
     pub(crate) fn load_existing(config_file: &Path) -> Result<Self> {
         let config_string = fs::read_to_string(config_file)
@@ -179,18 +153,6 @@ impl Config {
     }
 }
 
-fn display_configuration(config: &Config) {
-    let display = ConfigDisplay::from(config);
-    let mut table = Table::new([display]);
-    table
-        .with(Rotate::Left)
-        .with(Style::modern())
-        .with(Margin::new(4, 0, 0, 0));
-
-    print_header();
-    println!("{table}");
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 // PUBLIC
 ////////////////////////////////////////////////////////////////////////////////
@@ -198,7 +160,17 @@ fn display_configuration(config: &Config) {
 pub fn show_configuration() -> Result<()> {
     let config = Config::load()?;
 
-    display_configuration(&config);
+    let title = format!(" {} {} ", PROJECT_NAME, crate::common::PROJECT_VERSION);
+    let entries = vec![
+        ConfigEntry::bool("Fail Open", config.user.fail_open),
+        ConfigEntry::bool("Audit Tool Use", config.user.audit_tool_use),
+        ConfigEntry::bool("Audit Prompts", config.user.audit_prompts),
+        ConfigEntry::new("Install ID", &config.install_id),
+        ConfigEntry::new("Organization", &config.org.name),
+        ConfigEntry::new("Organization URL", &config.org.url),
+    ];
+
+    ConfigView::new(&title, entries).print();
 
     Ok(())
 }
@@ -237,6 +209,16 @@ pub(crate) fn parse_team_url(url: &str) -> Result<String> {
     }
 
     Ok((*oid).to_string())
+}
+
+/// Checks if the user is authorized (has valid org configuration).
+///
+/// Returns true if the user has completed team initialization or joined a team.
+#[must_use]
+pub fn is_authorized() -> bool {
+    Config::load()
+        .map(|config| config.org.authorized())
+        .unwrap_or(false)
 }
 
 pub fn join_team(args: &JoinTeamArgs) -> Result<()> {

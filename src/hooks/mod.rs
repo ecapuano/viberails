@@ -8,6 +8,7 @@ pub use install::binary_location;
 pub use install::install;
 pub use install::install_binary;
 pub use install::uninstall;
+pub use install::uninstall_hooks;
 
 mod list;
 pub use list::list;
