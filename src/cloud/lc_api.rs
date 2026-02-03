@@ -386,7 +386,8 @@ where
     // Get minimal JWT with oid="-" (no specific org)
     let jwt = get_jwt_firebase("-", fb_token)?;
 
-    let url = format!("{LC_API_URL}/user/orgs?with_names=true");
+    // Request a high limit to get all orgs (API defaults to 10)
+    let url = format!("{LC_API_URL}/user/orgs?with_names=true&limit=1000");
     let bearer = format!("Bearer {jwt}");
 
     let res = minreq::get(&url)

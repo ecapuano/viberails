@@ -264,7 +264,9 @@ where
         selected_indices: &HashSet<usize>,
         error_message: Option<&str>,
     ) {
-        let list_height = self.items.len() as u16 + 5; // items + border + help + potential error
+        // Cap list height to max 15 items visible (plus border + help + error) to ensure scrolling works
+        let max_visible_items: u16 = 15;
+        let list_height = (self.items.len() as u16).min(max_visible_items) + 5; // items + border + help + potential error
         let height = list_height.min(frame.area().height.saturating_sub(2));
         let area = centered_rect(60, height, frame.area());
 
@@ -311,7 +313,7 @@ where
             })
             .collect();
 
-        let list = List::new(list_items);
+        let list = List::new(list_items).scroll_padding(1);
         frame.render_stateful_widget(list, chunks[0], state);
 
         if let Some(err) = error_message {
