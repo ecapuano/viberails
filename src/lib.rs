@@ -34,7 +34,6 @@ pub enum MenuAction {
     UninstallFully,
     ListHooks,
     ShowConfiguration,
-    Upgrade,
     Quit,
 }
 
@@ -76,11 +75,6 @@ pub fn get_menu_options() -> Vec<MenuOption> {
             label: "Show Configuration",
             action: MenuAction::ShowConfiguration,
             shortcut: Some('c'),
-        },
-        MenuOption {
-            label: "Upgrade",
-            action: MenuAction::Upgrade,
-            shortcut: Some('g'),
         },
         MenuOption {
             label: "Quit",

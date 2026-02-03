@@ -196,11 +196,6 @@ fn show_menu() -> Result<()> {
                 wait_for_keypress();
                 r
             }
-            Some(MenuAction::Upgrade) => {
-                let r = upgrade();
-                wait_for_keypress();
-                r
-            }
             Some(MenuAction::Quit) | None => return Ok(()),
         };
 
