@@ -33,6 +33,8 @@ fn main() {
     // Embed icon and version info in Windows executable
     #[cfg(windows)]
     {
+        use winres::VersionInfo;
+
         let mut res = winres::WindowsResource::new();
         res.set_icon("resources/windows/assets/icon.ico");
         res.set("ProductName", "VibeRails");
@@ -40,6 +42,19 @@ fn main() {
         res.set("LegalCopyright", "Copyright © 2026");
         res.set("ProductVersion", &git_version);
         res.set("FileVersion", &git_version);
+
+        // Parse git_version (e.g., "1.2.3") into numeric version
+        let version_parts: Vec<u64> = git_version
+            .split('.')
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        let major = version_parts.first().copied().unwrap_or(0);
+        let minor = version_parts.get(1).copied().unwrap_or(0);
+        let patch = version_parts.get(2).copied().unwrap_or(0);
+        let numeric_version = (major << 48) | (minor << 32) | (patch << 16);
+        res.set_version_info(VersionInfo::FILEVERSION, numeric_version);
+        res.set_version_info(VersionInfo::PRODUCTVERSION, numeric_version);
+
         if let Err(e) = res.compile() {
             eprintln!("cargo:warning=Failed to compile Windows resources: {e}");
         }
