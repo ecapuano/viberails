@@ -209,7 +209,7 @@ impl<'a, T> Select<'a, T> {
             .title(Span::styled(self.title, self.theme.title));
 
         if let Some(subtitle) = self.subtitle {
-            block = block.title_top(
+            block = block.title_bottom(
                 Line::from(Span::styled(subtitle, self.theme.help)).alignment(Alignment::Right),
             );
         }
