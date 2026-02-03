@@ -1,4 +1,8 @@
-use crate::{common::print_header, providers::ProviderRegistry};
+use crate::{
+    common::print_header,
+    providers::ProviderRegistry,
+    tui::{ConfigEntry, ConfigView},
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
@@ -10,14 +14,14 @@ pub fn list() {
 
     for factory in registry.all() {
         let discovery = factory.discover();
-
-        println!("\nProvider: {} ({})", factory.display_name(), factory.id());
+        let title = format!(" {} ({}) ", factory.display_name(), factory.id());
 
         if !discovery.detected {
-            println!("    [not detected]");
+            let mut entries = vec![ConfigEntry::new("Status", "not detected")];
             if let Some(hint) = discovery.detection_hint {
-                println!("    Hint: {hint}");
+                entries.push(ConfigEntry::new("Hint", hint));
             }
+            ConfigView::new(&title, entries).print();
             continue;
         }
 
@@ -25,22 +29,29 @@ pub fn list() {
             Ok(provider) => match provider.list() {
                 Ok(hooks) => {
                     if hooks.is_empty() {
-                        println!("    [no hooks installed]");
+                        let entries = vec![ConfigEntry::new("Status", "no hooks installed")];
+                        ConfigView::new(&title, entries).print();
                     } else {
-                        for hook in hooks {
-                            println!(
-                                "    {:<20} {:<10} {}",
-                                hook.hook_type, hook.matcher, hook.command
-                            );
-                        }
+                        let entries: Vec<ConfigEntry> = hooks
+                            .iter()
+                            .map(|hook| {
+                                ConfigEntry::new(
+                                    &hook.hook_type,
+                                    format!("{} {}", hook.matcher, hook.command),
+                                )
+                            })
+                            .collect();
+                        ConfigView::new(&title, entries).print();
                     }
                 }
                 Err(e) => {
-                    println!("    [error listing hooks: {e}]");
+                    let entries = vec![ConfigEntry::new("Error", format!("listing hooks: {e}"))];
+                    ConfigView::new(&title, entries).print();
                 }
             },
             Err(e) => {
-                println!("    [error creating provider: {e}]");
+                let entries = vec![ConfigEntry::new("Error", format!("creating provider: {e}"))];
+                ConfigView::new(&title, entries).print();
             }
         }
     }
