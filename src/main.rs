@@ -111,7 +111,7 @@ fn show_menu() -> Result<()> {
                 no_browser: false,
                 existing_org: None,
             };
-            login(&args).context("Login Failure");
+            login(&args).context("Login Failure")?;
             install()
         }
         Some(MenuAction::JoinTeam) => {
