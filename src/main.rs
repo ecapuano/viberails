@@ -160,7 +160,11 @@ fn show_menu() -> Result<()> {
                 };
 
                 let args = JoinTeamArgs { url };
-                join_team(&args).context("Unable to join team")?;
+                if let Err(e) = join_team(&args) {
+                    eprintln!("Failed to join team: {e}");
+                    wait_for_keypress();
+                    continue;
+                }
                 install()
             }
             Some(MenuAction::InstallHooks) => {
