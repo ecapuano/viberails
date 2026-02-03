@@ -121,21 +121,18 @@ fn test_registry_discover_all_matches_all_iterator() {
 }
 
 #[test]
-fn test_registry_excludes_openclaw() {
-    // OpenClaw is intentionally excluded from the registry until it adds proper hook support.
-    // The implementation is preserved in openclaw.rs for future use.
-    // See: https://github.com/refractionPOINT/project-west-coast/issues/XXX (if applicable)
+fn test_registry_includes_openclaw() {
+    // OpenClaw is now included in the registry with proper lifecycle hook support (api.on)
     let registry = ProviderRegistry::new();
 
     let has_openclaw = registry.all().any(|f| f.id() == "openclaw");
     assert!(
-        !has_openclaw,
-        "OpenClaw should NOT be in the registry - it was intentionally disabled"
+        has_openclaw,
+        "OpenClaw should be in the registry"
     );
 
     // Also verify via get()
-    assert!(
-        registry.get("openclaw").is_none(),
-        "OpenClaw should not be retrievable from registry"
-    );
+    let factory = registry.get("openclaw");
+    assert!(factory.is_some(), "OpenClaw should be retrievable from registry");
+    assert_eq!(factory.unwrap().display_name(), "OpenClaw");
 }

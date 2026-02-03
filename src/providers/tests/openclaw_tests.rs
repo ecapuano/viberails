@@ -223,12 +223,14 @@ fn test_generate_plugin_index_contains_binary_path() {
     assert!(index_ts.contains("/custom/path/to/viberails"));
     // Check it has the callback command (now openclaw-callback, not clawdbot-callback)
     assert!(index_ts.contains("openclaw-callback"));
-    // Check it exports a default register function
-    assert!(index_ts.contains("export default function register"));
-    // Check it registers before_tool_call hook
+    // Check it uses object export format with id, name, description, and register method
+    assert!(index_ts.contains("export default {"));
+    assert!(index_ts.contains(r#"id: ""#));
+    assert!(index_ts.contains(r#"name: ""#));
+    assert!(index_ts.contains("register(api"));
+    // Check it registers before_tool_call lifecycle hook using api.on()
     assert!(index_ts.contains("before_tool_call"));
-    // Check it uses registerHook
-    assert!(index_ts.contains("registerHook"));
+    assert!(index_ts.contains("api.on("));
 }
 
 #[test]

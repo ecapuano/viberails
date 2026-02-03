@@ -130,9 +130,9 @@ impl OpenClaw {
     }
 
     /// Generate the plugin index.ts content that registers the `before_tool_call` hook.
-    /// This uses the `OpenClaw` plugin API to register hooks that intercept tool calls
+    /// This uses the `OpenClaw` plugin API to register lifecycle hooks that intercept tool calls
     /// before they are executed.
-    /// Ref: PR #6264 for `before_tool_call` hook format.
+    /// Ref: <https://docs.openclaw.ai/plugin> and knostic/openclaw-telemetry for working example.
     pub(crate) fn generate_plugin_index(&self) -> String {
         let binary_path = Self::escape_js_string(&self.binary_path.display().to_string());
         format!(
@@ -141,13 +141,13 @@ impl OpenClaw {
 /**
  * {PROJECT_NAME} Plugin for OpenClaw
  *
- * This plugin intercepts tool calls via the before_tool_call hook for security
- * and compliance monitoring.
+ * This plugin intercepts tool calls via the before_tool_call lifecycle hook
+ * for security and compliance monitoring.
  * Ref: https://docs.openclaw.ai/plugin
  */
 
 /**
- * OpenClaw before_tool_call event format (PR #6264)
+ * OpenClaw before_tool_call event format
  */
 interface BeforeToolCallEvent {{
   toolName: string;
@@ -155,10 +155,19 @@ interface BeforeToolCallEvent {{
 }}
 
 /**
+ * OpenClaw context passed to lifecycle hooks
+ */
+interface HookContext {{
+  agentId?: string;
+  sessionKey?: string;
+  toolName: string;
+}}
+
+/**
  * Response format for before_tool_call hook
  * Return {{ block: true, blockReason: "..." }} to block the tool call
  * Return {{ params: modifiedParams }} to modify parameters
- * Return undefined or the original event to allow
+ * Return undefined or void to allow
  */
 interface BeforeToolCallResponse {{
   block?: boolean;
@@ -166,12 +175,11 @@ interface BeforeToolCallResponse {{
   params?: Record<string, unknown>;
 }}
 
-interface PluginAPI {{
-  registerHook(hookName: string, handler: (event: unknown) => unknown): void;
-}}
-
-function callViberails(event: BeforeToolCallEvent): BeforeToolCallResponse | undefined {{
-  const eventJson = JSON.stringify(event);
+function callViberails(
+  event: BeforeToolCallEvent,
+  ctx: HookContext
+): BeforeToolCallResponse | undefined {{
+  const eventJson = JSON.stringify({{ ...event, ...ctx }});
 
   try {{
     const result = spawnSync("{binary_path}", ["openclaw-callback"], {{
@@ -199,38 +207,46 @@ function callViberails(event: BeforeToolCallEvent): BeforeToolCallResponse | und
             blockReason: response.reason || "Blocked by {PROJECT_NAME} policy",
           }};
         }}
-      }} catch (e) {{
+      }} catch {{
         // Ignore parse errors, response may be empty for allowed actions
       }}
     }}
 
     return undefined; // Allow the tool call
-  }} catch (e) {{
-    console.error(`[{PROJECT_NAME}] Exception: ${{e}}`);
+  }} catch {{
+    console.error(`[{PROJECT_NAME}] Exception during tool call interception`);
     return undefined; // Fail open on exceptions
   }}
 }}
 
-export default function register(api: PluginAPI) {{
-  // Register before_tool_call hook to intercept tool executions
-  // This fires before any tool is executed
-  // Ref: OpenClaw PR #6264
-  api.registerHook("before_tool_call", (event: unknown) => {{
-    const toolEvent = event as BeforeToolCallEvent;
+/**
+ * OpenClaw Plugin using lifecycle hooks (api.on)
+ * Ref: https://github.com/knostic/openclaw-telemetry for working example
+ */
+export default {{
+  id: "{PROJECT_NAME}",
+  name: "{PROJECT_NAME} Security Plugin",
+  description: "Security and compliance monitoring for tool calls",
+  register(api: {{ on: (hook: string, handler: (event: BeforeToolCallEvent, ctx: HookContext) => BeforeToolCallResponse | void) => void }}) {{
+    // Register before_tool_call lifecycle hook to intercept tool executions
+    // This fires before any tool is executed
+    api.on("before_tool_call", (event, ctx) => {{
+      const {{ toolName, params }} = event;
 
-    // Skip if no tool name
-    if (!toolEvent.toolName) {{
-      return undefined;
-    }}
+      // Skip if no tool name
+      if (!toolName) {{
+        return;
+      }}
 
-    const result = callViberails(toolEvent);
+      const result = callViberails({{ toolName, params }}, ctx);
 
-    // Return the blocking response or undefined to allow
-    return result;
-  }});
+      // Return the blocking response or undefined to allow
+      return result;
+    }});
 
-  console.log(`[{PROJECT_NAME}] Plugin loaded - monitoring tool calls via before_tool_call hook`);
-}}
+    console.log(`[{PROJECT_NAME}] Plugin loaded - monitoring tool calls via before_tool_call hook`);
+  }}
+}};
 "#
         )
     }
