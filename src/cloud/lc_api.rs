@@ -4,13 +4,14 @@ use log::info;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    cloud::REQUEST_TIMEOUT_SECS,
     common::{PROJECT_NAME, user_agent},
     default::get_embedded_default,
 };
 
 const LC_JWT_URL: &str = "https://jwt.limacharlie.io";
 const LC_API_URL: &str = "https://api.limacharlie.io/v1";
+
+pub(crate) const LC_API_TIMEOUT_SECS: u64 = 30;
 
 /// Metadata for user signup
 #[derive(Serialize)]
@@ -157,7 +158,7 @@ where
     let body = format!("oid={}&fb_auth={}", oid.as_ref(), fb_auth.as_ref());
 
     let res = minreq::post(LC_JWT_URL)
-        .with_timeout(REQUEST_TIMEOUT_SECS)
+        .with_timeout(LC_API_TIMEOUT_SECS)
         .with_header("User-Agent", user_agent())
         .with_header("Content-Type", "application/x-www-form-urlencoded")
         .with_body(body)
@@ -219,7 +220,7 @@ where
 
     let signup_url = get_embedded_default("firebase_signup_url");
     let res = minreq::post(&signup_url)
-        .with_timeout(REQUEST_TIMEOUT_SECS)
+        .with_timeout(LC_API_TIMEOUT_SECS)
         .with_header("User-Agent", user_agent())
         .with_header("Authorization", format!("Bearer {}", id_token.as_ref()))
         .with_header("Content-Type", "application/json")
@@ -300,7 +301,7 @@ where
     );
 
     let res = minreq::post(&url)
-        .with_timeout(REQUEST_TIMEOUT_SECS)
+        .with_timeout(LC_API_TIMEOUT_SECS)
         .with_header("User-Agent", user_agent())
         .with_header("Authorization", bearer)
         .with_header("Content-Type", "application/x-www-form-urlencoded")
@@ -342,7 +343,7 @@ where
     let bearer = format!("Bearer {}", token.as_ref());
 
     let res = minreq::get(&url)
-        .with_timeout(REQUEST_TIMEOUT_SECS)
+        .with_timeout(LC_API_TIMEOUT_SECS)
         .with_header("User-Agent", user_agent())
         .with_header("Authorization", bearer)
         .send()
@@ -389,7 +390,7 @@ where
     let bearer = format!("Bearer {jwt}");
 
     let res = minreq::get(&url)
-        .with_timeout(REQUEST_TIMEOUT_SECS)
+        .with_timeout(LC_API_TIMEOUT_SECS)
         .with_header("User-Agent", user_agent())
         .with_header("Authorization", bearer)
         .send()
@@ -417,7 +418,7 @@ where
     let url = format!("{LC_API_URL}/orgs/{}/url", oid.as_ref());
 
     let res = minreq::get(&url)
-        .with_timeout(REQUEST_TIMEOUT_SECS)
+        .with_timeout(LC_API_TIMEOUT_SECS)
         .with_header("User-Agent", user_agent())
         .send()
         .with_context(|| format!("Failed to get org URLs from {url}"))?;
@@ -453,7 +454,7 @@ where
     );
 
     let res = minreq::post(&url)
-        .with_timeout(REQUEST_TIMEOUT_SECS)
+        .with_timeout(LC_API_TIMEOUT_SECS)
         .with_header("User-Agent", user_agent())
         .with_header("Authorization", bearer)
         .with_header("Content-Type", "application/x-www-form-urlencoded")
@@ -525,7 +526,7 @@ impl WebhookAdapter<'_> {
         );
 
         let res = minreq::post(&url)
-            .with_timeout(REQUEST_TIMEOUT_SECS)
+            .with_timeout(LC_API_TIMEOUT_SECS)
             .with_header("User-Agent", user_agent())
             .with_header("Authorization", bearer)
             .with_header("Content-Type", "application/x-www-form-urlencoded")
@@ -577,7 +578,7 @@ impl DRRule<'_> {
         );
 
         let res = minreq::post(&url)
-            .with_timeout(REQUEST_TIMEOUT_SECS)
+            .with_timeout(LC_API_TIMEOUT_SECS)
             .with_header("User-Agent", user_agent())
             .with_header("Authorization", bearer)
             .with_header("Content-Type", "application/x-www-form-urlencoded")
