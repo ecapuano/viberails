@@ -57,14 +57,9 @@ pub fn get_menu_options() -> Vec<MenuOption> {
             shortcut: Some('h'),
         },
         MenuOption {
-            label: "Uninstall Hooks",
+            label: "Remove Hooks",
             action: MenuAction::UninstallHooks,
             shortcut: Some('u'),
-        },
-        MenuOption {
-            label: "Uninstall Fully (hooks + binary)",
-            action: MenuAction::UninstallFully,
-            shortcut: Some('f'),
         },
         MenuOption {
             label: "List Hooks",
@@ -75,6 +70,11 @@ pub fn get_menu_options() -> Vec<MenuOption> {
             label: "Show Configuration",
             action: MenuAction::ShowConfiguration,
             shortcut: Some('c'),
+        },
+        MenuOption {
+            label: "Uninstall",
+            action: MenuAction::UninstallFully,
+            shortcut: Some('f'),
         },
         MenuOption {
             label: "Quit",
