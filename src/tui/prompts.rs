@@ -104,6 +104,29 @@ where
 /// )?;
 /// ```
 pub fn select_prompt(title: &str, options: Vec<&str>, help: Option<&str>) -> PromptResult<usize> {
+    select_prompt_with_subtitle(title, options, help, None)
+}
+
+/// Creates a single-selection prompt with an optional subtitle in the top-right corner.
+///
+/// # Arguments
+///
+/// * `title` - The prompt title
+/// * `options` - List of string options to choose from
+/// * `help` - Optional help message
+/// * `subtitle` - Optional subtitle displayed in the top-right corner (e.g., version)
+///
+/// # Returns
+///
+/// - `Ok(Some(index))` - Index of the selected option
+/// - `Ok(None)` - User cancelled
+/// - `Err(_)` - Terminal error
+pub fn select_prompt_with_subtitle(
+    title: &str,
+    options: Vec<&str>,
+    help: Option<&str>,
+    subtitle: Option<&str>,
+) -> PromptResult<usize> {
     let items: Vec<SelectItem<usize>> = options
         .into_iter()
         .enumerate()
@@ -114,6 +137,10 @@ pub fn select_prompt(title: &str, options: Vec<&str>, help: Option<&str>) -> Pro
 
     if let Some(h) = help {
         prompt = prompt.with_help_message(h);
+    }
+
+    if let Some(s) = subtitle {
+        prompt = prompt.with_subtitle(s);
     }
 
     prompt.prompt()

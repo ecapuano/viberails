@@ -3,7 +3,7 @@
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout, Rect},
+    layout::{Alignment, Constraint, Layout, Rect},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState},
 };
@@ -48,6 +48,7 @@ impl<T> SelectItem<T> {
 /// A single selection prompt.
 pub struct Select<'a, T> {
     title: &'a str,
+    subtitle: Option<&'a str>,
     items: Vec<SelectItem<T>>,
     help_message: Option<&'a str>,
     starting_index: usize,
@@ -60,11 +61,19 @@ impl<'a, T> Select<'a, T> {
     pub fn new(title: &'a str, items: Vec<SelectItem<T>>) -> Self {
         Self {
             title,
+            subtitle: None,
             items,
             help_message: None,
             starting_index: 0,
             theme: Theme::default(),
         }
+    }
+
+    /// Sets the subtitle displayed in the top-right corner.
+    #[must_use]
+    pub fn with_subtitle(mut self, subtitle: &'a str) -> Self {
+        self.subtitle = Some(subtitle);
+        self
     }
 
     /// Sets the help message displayed below the list.
@@ -194,10 +203,16 @@ impl<'a, T> Select<'a, T> {
 
         frame.render_widget(Clear, area);
 
-        let block = Block::default()
+        let mut block = Block::default()
             .borders(Borders::ALL)
             .border_style(self.theme.border)
             .title(Span::styled(self.title, self.theme.title));
+
+        if let Some(subtitle) = self.subtitle {
+            block = block.title_top(
+                Line::from(Span::styled(subtitle, self.theme.help)).alignment(Alignment::Right),
+            );
+        }
 
         let inner_area = block.inner(area);
         frame.render_widget(block, area);
