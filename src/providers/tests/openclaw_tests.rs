@@ -251,7 +251,7 @@ fn test_generate_plugin_index_uses_correct_event_format() {
 
     // Should use the correct OpenClaw event format
     assert!(index_ts.contains("toolName"));
-    assert!(index_ts.contains("BeforeToolCallEvent"));
+    assert!(index_ts.contains("ToolCallEvent"));
     // Should use the correct response format
     assert!(index_ts.contains("block: true"));
     assert!(index_ts.contains("blockReason"));
@@ -272,7 +272,7 @@ fn test_generate_plugin_index_uses_lifecycle_hook_with_context() {
     assert!(index_ts.contains("api.on(\"before_tool_call\", (event, ctx)"));
 
     // Context should be spread into the JSON payload sent to viberails
-    assert!(index_ts.contains("{ ...event, ...ctx }"));
+    assert!(index_ts.contains("{ eventType, ...event, ...ctx }"));
 }
 
 #[test]
@@ -284,6 +284,76 @@ fn test_generate_plugin_index_has_description_field() {
     // Export default object should have description field
     assert!(index_ts.contains("description:"));
     assert!(index_ts.contains("Security and compliance monitoring"));
+}
+
+#[test]
+fn test_generate_plugin_index_registers_message_hooks() {
+    let openclaw = make_openclaw("/usr/bin/viberails");
+
+    let index_ts = openclaw.generate_plugin_index();
+
+    // Should register message_sent hook for LLM responses
+    assert!(index_ts.contains("api.on(\"message_sent\""));
+    // Should register message_received hook for user inputs
+    assert!(index_ts.contains("api.on(\"message_received\""));
+    // Should register after_tool_call hook
+    assert!(index_ts.contains("api.on(\"after_tool_call\""));
+    // Should have MessageEvent interface
+    assert!(index_ts.contains("interface MessageEvent"));
+    assert!(index_ts.contains("content: string"));
+}
+
+#[test]
+fn test_generate_plugin_index_has_notify_function() {
+    let openclaw = make_openclaw("/usr/bin/viberails");
+
+    let index_ts = openclaw.generate_plugin_index();
+
+    // Should have notifyEvent function for non-blocking events
+    assert!(index_ts.contains("function notifyEvent"));
+    // Should have authorizeToolCall function for blocking tool authorization
+    assert!(index_ts.contains("function authorizeToolCall"));
+}
+
+#[test]
+fn test_generate_plugin_index_includes_event_type_in_payload() {
+    let openclaw = make_openclaw("/usr/bin/viberails");
+
+    let index_ts = openclaw.generate_plugin_index();
+
+    // Both functions should include eventType in the JSON payload
+    // This allows the backend to distinguish between different event types
+    assert!(index_ts.contains("{ eventType, ...event, ...ctx }"));
+
+    // authorizeToolCall should pass the event type
+    assert!(index_ts.contains(r#"authorizeToolCall("before_tool_call""#));
+
+    // notifyEvent calls should pass their respective event types
+    assert!(index_ts.contains(r#"notifyEvent("after_tool_call""#));
+    assert!(index_ts.contains(r#"notifyEvent("message_sent""#));
+    assert!(index_ts.contains(r#"notifyEvent("message_received""#));
+}
+
+#[test]
+fn test_generate_plugin_index_has_channel_id_in_context() {
+    let openclaw = make_openclaw("/usr/bin/viberails");
+
+    let index_ts = openclaw.generate_plugin_index();
+
+    // HookContext should include channelId for message events
+    assert!(index_ts.contains("channelId?: string"));
+}
+
+#[test]
+fn test_generate_plugin_index_has_different_timeouts() {
+    let openclaw = make_openclaw("/usr/bin/viberails");
+
+    let index_ts = openclaw.generate_plugin_index();
+
+    // authorizeToolCall should have 30s timeout (blocking operation)
+    assert!(index_ts.contains("timeout: 30000"));
+    // notifyEvent should have shorter 5s timeout (fire and forget)
+    assert!(index_ts.contains("timeout: 5000"));
 }
 
 // Discovery tests
