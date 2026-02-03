@@ -21,6 +21,7 @@ pub use upgrade::{poll_upgrade, upgrade};
 pub struct MenuOption {
     pub label: &'static str,
     pub action: MenuAction,
+    pub shortcut: Option<char>,
 }
 
 /// Actions that can be performed from the interactive menu
@@ -44,38 +45,47 @@ pub fn get_menu_options() -> Vec<MenuOption> {
         MenuOption {
             label: "Initialize Team",
             action: MenuAction::InitializeTeam,
+            shortcut: Some('i'),
         },
         MenuOption {
             label: "Join Team",
             action: MenuAction::JoinTeam,
+            shortcut: Some('j'),
         },
         MenuOption {
             label: "Install Hooks",
             action: MenuAction::InstallHooks,
+            shortcut: Some('h'),
         },
         MenuOption {
             label: "Uninstall Hooks",
             action: MenuAction::UninstallHooks,
+            shortcut: Some('u'),
         },
         MenuOption {
             label: "Uninstall Fully (hooks + binary)",
             action: MenuAction::UninstallFully,
+            shortcut: Some('f'),
         },
         MenuOption {
             label: "List Hooks",
             action: MenuAction::ListHooks,
+            shortcut: Some('l'),
         },
         MenuOption {
             label: "Show Configuration",
             action: MenuAction::ShowConfiguration,
+            shortcut: Some('c'),
         },
         MenuOption {
             label: "Upgrade",
             action: MenuAction::Upgrade,
+            shortcut: Some('g'),
         },
         MenuOption {
             label: "Quit",
             action: MenuAction::Quit,
+            shortcut: Some('q'),
         },
     ]
 }

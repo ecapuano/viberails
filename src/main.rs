@@ -12,7 +12,7 @@ use viberails::{
     JoinTeamArgs, Logging, LoginArgs, MenuAction, PROJECT_NAME, PROJECT_VERSION, Providers,
     codex_hook, get_menu_options, hook, install, is_authorized, join_team, list, login,
     poll_upgrade, show_configuration,
-    tui::{MessageStyle, message_prompt, select_prompt_with_subtitle, text_prompt},
+    tui::{MessageStyle, message_prompt, select_prompt_with_shortcuts, text_prompt},
     uninstall, uninstall_hooks, upgrade,
 };
 
@@ -115,12 +115,13 @@ fn wait_for_keypress() {
 fn show_menu() -> Result<()> {
     loop {
         let options = get_menu_options();
-        let labels: Vec<&str> = options.iter().map(|o| o.label).collect();
+        let items: Vec<(&str, Option<char>)> =
+            options.iter().map(|o| (o.label, o.shortcut)).collect();
 
-        let selection_idx = select_prompt_with_subtitle(
+        let selection_idx = select_prompt_with_shortcuts(
             "What would you like to do?",
-            labels,
-            Some("↑↓ navigate, Enter select, Esc cancel"),
+            items,
+            Some("↑↓/keys navigate, Enter select, Esc cancel"),
             Some(PROJECT_VERSION),
         )
         .context("Failed to read menu selection")?;

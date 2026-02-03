@@ -20,6 +20,8 @@ pub struct SelectItem<T> {
     pub label: String,
     /// Whether this item can be selected
     pub enabled: bool,
+    /// Optional keyboard shortcut to jump to this item
+    pub shortcut: Option<char>,
 }
 
 impl<T> SelectItem<T> {
@@ -30,6 +32,7 @@ impl<T> SelectItem<T> {
             value,
             label: label.into(),
             enabled: true,
+            shortcut: None,
         }
     }
 
@@ -41,7 +44,15 @@ impl<T> SelectItem<T> {
             value,
             label: label.into(),
             enabled: false,
+            shortcut: None,
         }
+    }
+
+    /// Sets a keyboard shortcut for this item.
+    #[must_use]
+    pub fn with_shortcut(mut self, shortcut: char) -> Self {
+        self.shortcut = Some(shortcut);
+        self
     }
 }
 
@@ -146,10 +157,27 @@ impl<'a, T> Select<'a, T> {
                     KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                         return Ok(None);
                     }
+                    KeyCode::Char(c) => {
+                        // Check if any item has this shortcut
+                        if let Some(idx) = self.find_item_by_shortcut(c) {
+                            state.select(Some(idx));
+                        }
+                    }
                     _ => {}
                 }
             }
         }
+    }
+
+    fn find_item_by_shortcut(&self, c: char) -> Option<usize> {
+        let c_lower = c.to_ascii_lowercase();
+        self.items
+            .iter()
+            .enumerate()
+            .find(|(_, item)| {
+                item.enabled && item.shortcut.map(|s| s.to_ascii_lowercase()) == Some(c_lower)
+            })
+            .map(|(idx, _)| idx)
     }
 
     fn move_cursor_up(&self, state: &mut ListState) {

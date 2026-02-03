@@ -146,6 +146,52 @@ pub fn select_prompt_with_subtitle(
     prompt.prompt()
 }
 
+/// Creates a single-selection prompt with shortcuts and an optional subtitle.
+///
+/// # Arguments
+///
+/// * `title` - The prompt title
+/// * `options` - List of (label, shortcut) tuples
+/// * `help` - Optional help message
+/// * `subtitle` - Optional subtitle displayed in the top-right corner (e.g., version)
+///
+/// # Returns
+///
+/// - `Ok(Some(index))` - Index of the selected option
+/// - `Ok(None)` - User cancelled
+/// - `Err(_)` - Terminal error
+pub fn select_prompt_with_shortcuts(
+    title: &str,
+    options: Vec<(&str, Option<char>)>,
+    help: Option<&str>,
+    subtitle: Option<&str>,
+) -> PromptResult<usize> {
+    let items: Vec<SelectItem<usize>> = options
+        .into_iter()
+        .enumerate()
+        .map(|(idx, (label, shortcut))| {
+            let item = SelectItem::new(idx, label);
+            if let Some(s) = shortcut {
+                item.with_shortcut(s)
+            } else {
+                item
+            }
+        })
+        .collect();
+
+    let mut prompt = Select::new(title, items);
+
+    if let Some(h) = help {
+        prompt = prompt.with_help_message(h);
+    }
+
+    if let Some(s) = subtitle {
+        prompt = prompt.with_subtitle(s);
+    }
+
+    prompt.prompt()
+}
+
 /// Creates a multi-selection prompt with custom items and optional validation.
 ///
 /// # Arguments

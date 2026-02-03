@@ -15,6 +15,7 @@ pub use components::{
     ConfigEntry, ConfigView, MessageStyle, Progress, ProgressHandle, PromptResult, ValidationResult,
 };
 pub use prompts::{
-    message_prompt, multiselect_prompt, select_prompt, select_prompt_with_subtitle, text_prompt,
+    message_prompt, multiselect_prompt, select_prompt, select_prompt_with_shortcuts,
+    select_prompt_with_subtitle, text_prompt,
 };
 pub use theme::Theme;
