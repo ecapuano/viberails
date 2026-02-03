@@ -559,8 +559,18 @@ fn print_success_message(org_name: &str, oid: &str, webhook_url: &str) {
     println!();
     println!("  {} Setup complete!", "✓".green().bold());
     println!();
-    println!("  Team: {}", org_name.cyan().bold());
-    println!("  View: {}", team_url.cyan());
+    println!("  {}", "┌────────────────────────────────────────────────────────┐".yellow());
+    println!("  {}  {}: {}",
+        "│".yellow(),
+        "Team".white().bold(),
+        org_name.cyan().bold()
+    );
+    println!("  {}  {}: {}",
+        "│".yellow(),
+        "View".white().bold(),
+        team_url.yellow().bold().underline()
+    );
+    println!("  {}", "└────────────────────────────────────────────────────────┘".yellow());
     println!();
     println!("  {}", "─".repeat(60).as_str().dimmed());
     println!();
