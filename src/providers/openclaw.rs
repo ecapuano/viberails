@@ -11,7 +11,7 @@ use crate::providers::{HookEntry, LLmProviderTrait};
 
 /// `OpenClaw` uses a plugin system for tool interception via the `before_tool_call` hook.
 /// We create a plugin in the extensions directory with a manifest and handler.
-/// Ref: <https://docs.openclaw.ai/plugin> and PR #6264 for `before_tool_call` hook.
+/// Ref: <https://docs.openclaw.ai/plugin>
 pub const OPENCLAW_HOOKS: &[&str] = &["plugin"];
 
 /// Discovery implementation for `OpenClaw`.
@@ -132,7 +132,7 @@ impl OpenClaw {
     /// Generate the plugin index.ts content that registers the `before_tool_call` hook.
     /// This uses the `OpenClaw` plugin API to register lifecycle hooks that intercept tool calls
     /// before they are executed.
-    /// Ref: <https://docs.openclaw.ai/plugin> and knostic/openclaw-telemetry for working example.
+    /// Ref: <https://docs.openclaw.ai/plugin>
     pub(crate) fn generate_plugin_index(&self) -> String {
         let binary_path = Self::escape_js_string(&self.binary_path.display().to_string());
         format!(
@@ -221,7 +221,6 @@ function callViberails(
 
 /**
  * OpenClaw Plugin using lifecycle hooks (api.on)
- * Ref: https://github.com/knostic/openclaw-telemetry for working example
  */
 export default {{
   id: "{PROJECT_NAME}",

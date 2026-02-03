@@ -249,12 +249,41 @@ fn test_generate_plugin_index_uses_correct_event_format() {
 
     let index_ts = openclaw.generate_plugin_index();
 
-    // Should use the correct OpenClaw event format (PR #6264)
+    // Should use the correct OpenClaw event format
     assert!(index_ts.contains("toolName"));
     assert!(index_ts.contains("BeforeToolCallEvent"));
     // Should use the correct response format
     assert!(index_ts.contains("block: true"));
     assert!(index_ts.contains("blockReason"));
+}
+
+#[test]
+fn test_generate_plugin_index_uses_lifecycle_hook_with_context() {
+    let openclaw = make_openclaw("/usr/bin/viberails");
+
+    let index_ts = openclaw.generate_plugin_index();
+
+    // Should define HookContext interface with expected fields
+    assert!(index_ts.contains("interface HookContext"));
+    assert!(index_ts.contains("agentId?: string"));
+    assert!(index_ts.contains("sessionKey?: string"));
+
+    // Handler should receive both event and ctx parameters
+    assert!(index_ts.contains("api.on(\"before_tool_call\", (event, ctx)"));
+
+    // Context should be spread into the JSON payload sent to viberails
+    assert!(index_ts.contains("{ ...event, ...ctx }"));
+}
+
+#[test]
+fn test_generate_plugin_index_has_description_field() {
+    let openclaw = make_openclaw("/usr/bin/viberails");
+
+    let index_ts = openclaw.generate_plugin_index();
+
+    // Export default object should have description field
+    assert!(index_ts.contains("description:"));
+    assert!(index_ts.contains("Security and compliance monitoring"));
 }
 
 // Discovery tests
@@ -293,7 +322,7 @@ fn test_is_tool_use_detects_openclaw_format() {
 
     let openclaw = make_openclaw("/usr/bin/test");
 
-    // OpenClaw before_tool_call format uses "toolName" key (PR #6264)
+    // OpenClaw before_tool_call format uses "toolName" key
     let event = json!({
         "toolName": "exec",
         "params": {
