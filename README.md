@@ -122,17 +122,63 @@ Configuration can be modified by editing `~/.config/viberails/config.json`.
 
 ## Commands Reference
 
-| Command           | Alias   | Description                         |
-| ----------------- | ------- | ----------------------------------- |
-| `init-team`       | `init`  | Create a new team via OAuth         |
-| `join-team <URL>` | `join`  | Join an existing team               |
-| `install`         |         | Install hooks for detected AI tools |
-| `uninstall`       |         | Remove hooks and optionally the binary |
-| `list`            | `ls`    | Show installed hooks                |
-| `show-config`     |         | Display current configuration       |
-| `upgrade`         |         | Update to the latest version        |
+| Command           | Alias         | Description                            |
+| ----------------- | ------------- | -------------------------------------- |
+| `init-team`       | `init`        | Create a new team via OAuth            |
+| `join-team <URL>` | `join`        | Join an existing team                  |
+| `install`         |               | Install hooks for detected AI tools    |
+| `uninstall`       |               | Remove hooks and optionally the binary |
+| `list`            | `ls`          | Show installed hooks                   |
+| `show-config`     |               | Display current configuration          |
+| `upgrade`         |               | Update to the latest version           |
+| `debug`           |               | Enable/disable debug logging           |
+| `debug-clean`     | `clean-debug` | Remove accumulated debug logs          |
 
 Run `viberails --help` for detailed usage information.
+
+## Troubleshooting
+
+### Debug Mode
+
+If hooks aren't working as expected, enable debug mode to capture detailed logs:
+
+```bash
+# Enable debug logging
+viberails debug
+
+# Use your AI coding tool - detailed logs will be captured
+# ...
+
+# View the logs
+ls ~/.local/share/viberails/debug/
+cat ~/.local/share/viberails/debug/debug-*.log
+
+# Clean up logs when done (they accumulate over time)
+viberails debug-clean
+
+# Disable debug mode
+viberails debug --disable
+```
+
+Debug logs include:
+- Full payload data from AI tools
+- Hook invocation details
+- Cloud API request/response information
+- Tool use vs prompt classification decisions
+
+**Note:** Debug logs may contain sensitive information. Use only for troubleshooting and disable when done.
+
+### Common Issues
+
+**Hooks not triggering:**
+1. Run `viberails list` to verify hooks are installed
+2. Enable debug mode and check if logs are created when using the AI tool
+3. Check the regular log at `~/.local/share/viberails/viberails.log`
+
+**Events not reaching LimaCharlie:**
+1. Enable debug mode to see cloud API responses
+2. Verify your team URL with `viberails show-config`
+3. Check if `audit_tool_use` and `audit_prompts` are enabled
 
 ## Architecture
 

@@ -133,7 +133,7 @@ impl UpgradeLock {
                 .ok()
                 .and_then(|m| m.modified().ok())
                 .and_then(|t| SystemTime::now().duration_since(t).ok())
-                .is_some_and(|elapsed| elapsed < Duration::from_secs(600));
+                .is_some_and(|elapsed| elapsed < Duration::from_mins(10));
 
             if is_recent {
                 info!("Upgrade already in progress (lock file exists)");

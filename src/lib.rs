@@ -1,6 +1,6 @@
 mod cloud;
 mod common;
-mod config;
+pub mod config;
 mod default;
 mod hooks;
 mod logging;
@@ -10,7 +10,10 @@ pub mod tui;
 mod upgrade;
 
 pub use common::{PROJECT_NAME, PROJECT_VERSION};
-pub use config::{JoinTeamArgs, is_authorized, join_team, show_configuration};
+pub use config::{
+    JoinTeamArgs, clean_debug_logs, get_debug_log_path, is_authorized, join_team, set_debug_mode,
+    show_configuration,
+};
 pub use hooks::{codex_hook, hook, install, list, uninstall, uninstall_hooks};
 pub use logging::Logging;
 pub use oauth::{LoginArgs, login::login};

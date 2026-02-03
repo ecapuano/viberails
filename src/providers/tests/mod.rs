@@ -5,6 +5,7 @@ mod discovery_tests;
 mod gemini_tests;
 mod opencode_tests;
 mod openclaw_tests;
+mod payload_tests;
 mod registry_tests;
 mod selector_tests;
 mod transcript_tests;
