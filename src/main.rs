@@ -139,7 +139,11 @@ fn show_menu() -> Result<()> {
                     no_browser: false,
                     existing_org: None,
                 };
-                login(&args).context("Login Failure")?;
+                if let Err(e) = login(&args) {
+                    eprintln!("Login failed: {e}");
+                    wait_for_keypress();
+                    continue;
+                }
                 install()
             }
             Some(MenuAction::JoinTeam) => {
