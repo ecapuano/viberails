@@ -1,12 +1,13 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use inquire::{Select, Text};
 use log::warn;
 
 use viberails::{
     JoinTeamArgs, Logging, LoginArgs, MenuAction, PROJECT_NAME, PROJECT_VERSION, Providers,
     codex_hook, get_menu_options, hook, install, join_team, list, login, poll_upgrade,
-    show_configuration, uninstall, upgrade,
+    show_configuration,
+    tui::{select_prompt, text_prompt},
+    uninstall, upgrade,
 };
 
 #[derive(Parser)]
@@ -89,16 +90,20 @@ fn show_menu() -> Result<()> {
     let options = get_menu_options();
     let labels: Vec<&str> = options.iter().map(|o| o.label).collect();
 
-    let selection = Select::new("What would you like to do?", labels)
-        .with_help_message("Use ↑↓ to navigate, Enter to select")
-        .prompt()
-        .context("Failed to read menu selection")?;
+    let selection_idx = select_prompt(
+        "What would you like to do?",
+        labels,
+        Some("↑↓ navigate, Enter select, Esc cancel"),
+    )
+    .context("Failed to read menu selection")?;
 
-    // Find the matching action
-    let action = options
-        .into_iter()
-        .find(|o| o.label == selection)
-        .map(|o| o.action);
+    // Handle cancellation
+    let Some(idx) = selection_idx else {
+        return Ok(());
+    };
+
+    // Get the action for the selected index
+    let action = options.get(idx).map(|o| o.action);
 
     match action {
         Some(MenuAction::InitializeTeam) => {
@@ -109,9 +114,17 @@ fn show_menu() -> Result<()> {
             login(&args)
         }
         Some(MenuAction::JoinTeam) => {
-            let url = Text::new("Enter the team URL:")
-                .prompt()
-                .context("Failed to read team URL")?;
+            let url = text_prompt::<fn(&str) -> viberails::tui::ValidationResult>(
+                "Enter the team URL:",
+                Some("Enter to submit, Esc to cancel"),
+                None,
+            )
+            .context("Failed to read team URL")?;
+
+            let Some(url) = url else {
+                return Ok(());
+            };
+
             let args = JoinTeamArgs { url };
             join_team(&args)
         }

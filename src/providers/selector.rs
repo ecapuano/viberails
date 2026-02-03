@@ -2,9 +2,12 @@ use std::fmt;
 
 use anyhow::{Result, bail};
 use colored::Colorize;
-use inquire::{MultiSelect, validator::Validation};
 
 use crate::common::PROJECT_NAME;
+use crate::tui::{
+    ValidationResult,
+    components::{MultiSelect, MultiSelectItem},
+};
 
 use super::discovery::DiscoveryResult;
 use super::registry::ProviderRegistry;
@@ -111,58 +114,39 @@ fn run_install_selection(
         bail!("{no_tools_error}");
     }
 
-    let options: Vec<SelectableProvider> = discoveries
+    let items: Vec<MultiSelectItem<SelectableProvider>> = discoveries
         .into_iter()
-        .map(|d| SelectableProvider::new(d, SelectionMode::Install))
+        .map(|d| {
+            let provider = SelectableProvider::new(d, SelectionMode::Install);
+            let label = provider.to_string();
+            let enabled = provider.is_selectable();
+            let mut item = MultiSelectItem::new(provider, label);
+            item.enabled = enabled;
+            item.default_selected = enabled;
+            item
+        })
         .collect();
 
-    // Pre-select all detected providers
-    let default_indices: Vec<usize> = options
-        .iter()
-        .enumerate()
-        .filter(|(_, p)| p.is_selectable())
-        .map(|(i, _)| i)
-        .collect();
-
-    // Create a validator that ensures only detected providers are selected
-    // and at least one is selected
-    let validator = |selections: &[inquire::list_option::ListOption<&SelectableProvider>]| {
+    // Create a validator that ensures at least one is selected
+    let validator = |selections: &[&SelectableProvider]| {
         if selections.is_empty() {
-            return Ok(Validation::Invalid(
-                "Please select at least one tool".into(),
-            ));
+            return ValidationResult::Invalid("Please select at least one tool".into());
         }
-
-        for selection in selections {
-            if !selection.value.is_selectable() {
-                return Ok(Validation::Invalid(
-                    format!(
-                        "{} is not installed and cannot be selected",
-                        selection.value.result.display_name
-                    )
-                    .into(),
-                ));
-            }
-        }
-
-        Ok(Validation::Valid)
+        ValidationResult::Valid
     };
 
-    let prompt = MultiSelect::new(prompt_text, options)
-        .with_default(&default_indices)
+    let result = MultiSelect::new(prompt_text, items)
         .with_validator(validator)
-        .with_help_message("Use ↑↓ to navigate, Space to toggle, Enter to confirm");
+        .with_help_message("↑↓ navigate, Space toggle, Enter confirm, Esc cancel")
+        .prompt()?;
 
-    match prompt.prompt() {
-        Ok(selections) => {
+    match result {
+        Some(selections) => {
             let selected_ids: Vec<&'static str> =
                 selections.into_iter().map(|p| p.result.id).collect();
             Ok(Some(SelectionResult { selected_ids }))
         }
-        Err(
-            inquire::InquireError::OperationCanceled | inquire::InquireError::OperationInterrupted,
-        ) => Ok(None),
-        Err(e) => Err(e.into()),
+        None => Ok(None),
     }
 }
 
@@ -198,61 +182,43 @@ fn run_uninstall_selection(
                 println!("  {} - available but hooks not installed", d.display_name);
             }
         }
-        bail!("Nothing to uninstall.");
+        println!("{}", "Nothing to uninstall.".yellow());
+        return Ok(None);
     }
 
-    let options: Vec<SelectableProvider> = discoveries
+    let items: Vec<MultiSelectItem<SelectableProvider>> = discoveries
         .into_iter()
-        .map(|d| SelectableProvider::new(d, SelectionMode::Uninstall))
+        .map(|d| {
+            let provider = SelectableProvider::new(d, SelectionMode::Uninstall);
+            let label = provider.to_string();
+            let enabled = provider.is_selectable();
+            let mut item = MultiSelectItem::new(provider, label);
+            item.enabled = enabled;
+            item.default_selected = enabled;
+            item
+        })
         .collect();
 
-    // Pre-select all providers with hooks installed
-    let default_indices: Vec<usize> = options
-        .iter()
-        .enumerate()
-        .filter(|(_, p)| p.is_selectable())
-        .map(|(i, _)| i)
-        .collect();
-
-    // Create a validator that ensures only providers with hooks installed are selected
-    // and at least one is selected
-    let validator = |selections: &[inquire::list_option::ListOption<&SelectableProvider>]| {
+    // Create a validator that ensures at least one is selected
+    let validator = |selections: &[&SelectableProvider]| {
         if selections.is_empty() {
-            return Ok(Validation::Invalid(
-                "Please select at least one tool".into(),
-            ));
+            return ValidationResult::Invalid("Please select at least one tool".into());
         }
-
-        for selection in selections {
-            if !selection.value.is_selectable() {
-                return Ok(Validation::Invalid(
-                    format!(
-                        "{} does not have hooks installed and cannot be uninstalled",
-                        selection.value.result.display_name
-                    )
-                    .into(),
-                ));
-            }
-        }
-
-        Ok(Validation::Valid)
+        ValidationResult::Valid
     };
 
-    let prompt = MultiSelect::new(prompt_text, options)
-        .with_default(&default_indices)
+    let result = MultiSelect::new(prompt_text, items)
         .with_validator(validator)
-        .with_help_message("Use ↑↓ to navigate, Space to toggle, Enter to confirm");
+        .with_help_message("↑↓ navigate, Space toggle, Enter confirm, Esc cancel")
+        .prompt()?;
 
-    match prompt.prompt() {
-        Ok(selections) => {
+    match result {
+        Some(selections) => {
             let selected_ids: Vec<&'static str> =
                 selections.into_iter().map(|p| p.result.id).collect();
             Ok(Some(SelectionResult { selected_ids }))
         }
-        Err(
-            inquire::InquireError::OperationCanceled | inquire::InquireError::OperationInterrupted,
-        ) => Ok(None),
-        Err(e) => Err(e.into()),
+        None => Ok(None),
     }
 }
 

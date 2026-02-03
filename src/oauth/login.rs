@@ -2,7 +2,6 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 use colored::Colorize;
-use inquire::{Select, Text};
 use log::info;
 
 use crate::{
@@ -14,6 +13,11 @@ use crate::{
     config::{Config, LcOrg},
     default::get_embedded_default,
     oauth::{LoginArgs, OAuthProvider, authorize},
+    tui::{
+        ValidationResult,
+        components::{Select, SelectItem},
+        select_prompt, text_prompt,
+    },
 };
 
 /// A selectable OAuth provider option for the interactive menu
@@ -39,19 +43,24 @@ const ORG_CREATE_TIMEOUT: Duration = Duration::from_secs(120);
 
 const ORG_DEFAULT_LOCATION: &str = "auto";
 
-fn query_user(prompt: &str) -> Result<String> {
-    let input = Text::new(prompt)
-        .with_validator(|s: &str| {
-            if s.trim().is_empty() {
-                Ok(inquire::validator::Validation::Invalid(
-                    "Input cannot be empty".into(),
-                ))
-            } else {
-                Ok(inquire::validator::Validation::Valid)
-            }
-        })
-        .prompt()
-        .context("Failed to read user input")?;
+fn query_user(prompt: &str) -> Result<Option<String>> {
+    let validator = |s: &str| {
+        if s.trim().is_empty() {
+            ValidationResult::Invalid("Input cannot be empty".into())
+        } else {
+            ValidationResult::Valid
+        }
+    };
+    let input = text_prompt(
+        prompt,
+        Some("Enter to submit, Esc to cancel"),
+        Some(&validator),
+    )
+    .context("Failed to read user input")?;
+
+    let Some(input) = input else {
+        return Ok(None);
+    };
 
     //
     // add a suffix for the org
@@ -60,17 +69,19 @@ fn query_user(prompt: &str) -> Result<String> {
     let suffix = uuid.get(..8).unwrap_or(&uuid);
     let input = format!("{input}-{suffix}-vr");
 
-    Ok(input)
+    Ok(Some(input))
 }
 
-fn query_org_name(token: &str) -> Result<String> {
+fn query_org_name(token: &str) -> Result<Option<String>> {
     loop {
-        let org_name = query_user("Enter Team Name:")?;
+        let Some(org_name) = query_user("Enter Team Name:")? else {
+            return Ok(None);
+        };
 
         let available = org_available(token, &org_name)?;
 
         if available {
-            return Ok(org_name);
+            return Ok(Some(org_name));
         }
 
         println!("{}", format!("{org_name} isn't available").red());
@@ -96,25 +107,27 @@ fn get_provider_options() -> Vec<ProviderOption> {
 }
 
 /// Prompt the user to select an OAuth provider
-fn query_oauth_provider() -> Result<OAuthProvider> {
+fn query_oauth_provider() -> Result<Option<OAuthProvider>> {
     let options = get_provider_options();
     let labels: Vec<&str> = options.iter().map(|o| o.label).collect();
 
-    let selection = Select::new("Select authentication provider:", labels)
-        .with_starting_cursor(0) // Default to Google
-        .with_help_message("Use \u{2191}\u{2193} to navigate, Enter to select")
-        .prompt()
-        .context("Failed to read provider selection")?;
+    let selection_idx = select_prompt(
+        "Select authentication provider:",
+        labels,
+        Some("↑↓ navigate, Enter select, Esc cancel"),
+    )
+    .context("Failed to read provider selection")?;
 
-    // Find the matching provider - this is safe because selection comes from our labels
-    Ok(options
-        .into_iter()
-        .find(|o| o.label == selection)
-        .map_or(OAuthProvider::Google, |o| o.provider))
+    let Some(idx) = selection_idx else {
+        return Ok(None);
+    };
+
+    // Find the matching provider by index
+    Ok(options.get(idx).map(|o| o.provider))
 }
 
 /// Prompt user to select a team (create new or use existing)
-fn query_team_choice(orgs: Vec<UserOrg>) -> Result<TeamChoice> {
+fn query_team_choice(orgs: Vec<UserOrg>) -> Result<Option<TeamChoice>> {
     let mut options: Vec<TeamOption> = vec![TeamOption {
         label: "Create a new team".to_string(),
         choice: TeamChoice::CreateNew,
@@ -129,19 +142,23 @@ fn query_team_choice(orgs: Vec<UserOrg>) -> Result<TeamChoice> {
         });
     }
 
-    let labels: Vec<String> = options.iter().map(|o| o.label.clone()).collect();
-    let label_refs: Vec<&str> = labels.iter().map(String::as_str).collect();
+    let items: Vec<SelectItem<usize>> = options
+        .iter()
+        .enumerate()
+        .map(|(idx, o)| SelectItem::new(idx, o.label.clone()))
+        .collect();
 
-    let selection = Select::new("Select a team:", label_refs)
+    let selection_idx = Select::new("Select a team:", items)
         .with_starting_cursor(0)
-        .with_help_message("Use ↑↓ to navigate, Enter to select")
+        .with_help_message("↑↓ navigate, Enter select, Esc cancel")
         .prompt()
         .context("Failed to read team selection")?;
 
-    Ok(options
-        .into_iter()
-        .find(|o| o.label == selection)
-        .map_or(TeamChoice::CreateNew, |o| o.choice))
+    let Some(idx) = selection_idx else {
+        return Ok(None);
+    };
+
+    Ok(options.into_iter().nth(idx).map(|o| o.choice))
 }
 
 fn wait_for_org(oid: &str, token: &str) -> Result<String> {
@@ -227,12 +244,12 @@ fn create_hook_config_tamper_rule(oid: &str, jwt: &str) -> Result<()> {
     // Hook config file patterns to monitor
     // NOTE: Keep in sync with providers in src/providers/*.rs
     let config_files = [
-        ".claude/settings.json",    // Claude Code
-        ".cursor/hooks.json",       // Cursor
-        ".gemini/settings.json",    // Gemini CLI
-        ".codex/config.toml",       // OpenAI Codex CLI
+        ".claude/settings.json",          // Claude Code
+        ".cursor/hooks.json",             // Cursor
+        ".gemini/settings.json",          // Gemini CLI
+        ".codex/config.toml",             // OpenAI Codex CLI
         ".config/opencode/opencode.json", // OpenCode
-        ".openclaw/openclaw.json",  // OpenClaw
+        ".openclaw/openclaw.json",        // OpenClaw
     ];
 
     // Build file path match rules for Write/Edit tools
@@ -405,11 +422,13 @@ fn create_web_hook(oid: &str, jwt: &str, install_id: &str) -> Result<String> {
 
 pub fn login(args: &LoginArgs) -> Result<()> {
     // Ask user to select OAuth provider
-    let provider = query_oauth_provider()?;
+    let Some(provider) = query_oauth_provider()? else {
+        return Ok(());
+    };
 
-    println!("Starting authentication...");
+    println!("\n{}", "Starting authentication...".cyan());
     let login = authorize(provider, args)?;
-    println!("Authentication successful.");
+    println!("{} Authentication successful", "✓".green());
 
     //
     // Create LimaCharlie user profile if this is a new user.
@@ -417,7 +436,7 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     // The function is safe to call for existing users - it will return early.
     //
     if let Some(ref email) = login.email {
-        println!("Setting up user profile...");
+        println!("{} Setting up user profile...", "→".blue());
         info!("Creating user profile for {email}");
         signup_user(&login.id_token, email).context("Failed to create user profile")?;
     } else {
@@ -430,20 +449,24 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     let (oid, org_name) = if let Some(ref existing_oid) = args.existing_org {
         // Use existing org - get a JWT for this specific org first
         // We need a JWT with permissions for this org to fetch its info
-        println!("Looking up existing organization...");
+        println!("{} Looking up existing organization...", "→".blue());
         info!("Using existing org oid={existing_oid}");
         let jwt = wait_for_org(existing_oid, &login.id_token)?;
         let org_info =
             get_org_info(&jwt, existing_oid).context("Unable to get organization info")?;
         info!("Org name: {}", org_info.name);
-        println!("Using team '{}'.", org_info.name);
+        println!("{} Using team '{}'", "✓".green(), org_info.name);
         (existing_oid.clone(), org_info.name)
     } else {
         // Fetch user's existing orgs and show selection menu
-        println!("Loading your teams...");
-
+        println!("{} Loading your teams...", "→".blue());
         let team_choice = match get_user_orgs(&login.id_token) {
-            Ok(orgs) if !orgs.is_empty() => query_team_choice(orgs)?,
+            Ok(orgs) if !orgs.is_empty() => {
+                let Some(choice) = query_team_choice(orgs)? else {
+                    return Ok(());
+                };
+                choice
+            }
             Ok(_) => {
                 // No existing orgs - go directly to create
                 info!("User has no existing orgs");
@@ -458,26 +481,28 @@ pub fn login(args: &LoginArgs) -> Result<()> {
 
         match team_choice {
             TeamChoice::CreateNew => {
-                println!("Requesting access token...");
+                println!("{} Requesting access token...", "→".blue());
                 info!("requesting a JWT token");
                 let jwt = get_jwt_firebase("-", &login.id_token)
                     .context("Unable to get JWT from FB TOKEN")?;
                 info!("received token");
-                println!("Access token received.");
+                println!("{} Access token received", "✓".green());
 
-                let org_name = query_org_name(&jwt)?;
+                let Some(org_name) = query_org_name(&jwt)? else {
+                    return Ok(());
+                };
                 let location = ORG_DEFAULT_LOCATION;
 
-                println!("Creating team '{org_name}'...");
+                println!("{} Creating team '{}'...", "→".blue(), org_name);
                 info!("Creating {org_name} org in {location}");
                 let oid = org_create(&jwt, &org_name, location)
                     .context("Unable to create organization")?;
                 info!("Org created oid={oid}");
-                println!("Team created.");
+                println!("{} Team created", "✓".green());
                 (oid, org_name)
             }
             TeamChoice::UseExisting { oid, name } => {
-                println!("Using existing team '{name}'...");
+                println!("{} Using existing team '{}'", "✓".green(), name);
                 info!("Using existing org oid={oid}");
                 (oid, name)
             }
@@ -487,23 +512,25 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     //
     // get the final token
     //
-    println!("Finalizing setup...");
+    println!("{} Finalizing setup...", "→".blue());
     info!("requesting a JWT token for {oid}");
     let jwt = wait_for_org(&oid, &login.id_token)?;
     info!("received token");
 
     let mut config = Config::load()?;
+    println!("{} Creating webhook...", "→".blue());
     let url = create_web_hook(&oid, &jwt, &config.install_id)?;
 
     //
     // Create D&R rules for the team
     //
+    println!("{} Creating detection rules...", "→".blue());
     create_dr_rules(&oid, &jwt)?;
 
     //
     // save the token to the config file
     //
-    println!("Saving configuration...");
+    println!("{} Saving configuration...", "→".blue());
     let org = LcOrg {
         oid,
         name: org_name,
@@ -511,6 +538,8 @@ pub fn login(args: &LoginArgs) -> Result<()> {
     };
     config.org = org;
     config.save()?;
+
+    println!("{} Setup complete!", "✓".green());
 
     print_success_message(&config.org.name, &config.org.oid, &config.org.url);
 

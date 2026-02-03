@@ -6,6 +6,7 @@ mod hooks;
 mod logging;
 mod oauth;
 mod providers;
+pub mod tui;
 mod upgrade;
 
 pub use common::{PROJECT_NAME, PROJECT_VERSION};

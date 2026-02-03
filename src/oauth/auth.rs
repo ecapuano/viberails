@@ -18,6 +18,7 @@ use url::Url;
 
 use crate::common::user_agent;
 use crate::default::get_embedded_default;
+use crate::tui::{ValidationResult, text_prompt};
 
 #[derive(Embed)]
 #[folder = "resources/oauth/"]
@@ -311,7 +312,8 @@ fn is_browser_available() -> bool {
     {
         // Check for DISPLAY environment variable (X11)
         // or WAYLAND_DISPLAY (Wayland)
-        let has_display = std::env::var("DISPLAY").is_ok() || std::env::var("WAYLAND_DISPLAY").is_ok();
+        let has_display =
+            std::env::var("DISPLAY").is_ok() || std::env::var("WAYLAND_DISPLAY").is_ok();
 
         // Also check if we're in an SSH session without X forwarding
         let in_ssh = std::env::var("SSH_CLIENT").is_ok() || std::env::var("SSH_TTY").is_ok();
@@ -354,8 +356,6 @@ fn is_browser_available() -> bool {
 /// 4. User copies the full URL from browser and pastes it here
 /// 5. We extract the code and exchange for tokens
 fn authorize_manual_callback(provider: OAuthProvider) -> Result<OAuthTokens> {
-    use inquire::Text;
-
     // Use a placeholder redirect URI - we won't actually receive callbacks
     let redirect_uri = "http://localhost:8085/callback";
 
@@ -384,18 +384,23 @@ fn authorize_manual_callback(provider: OAuthProvider) -> Result<OAuthTokens> {
     println!();
 
     // Prompt for the callback URL
-    let callback_url = Text::new("Paste the callback URL here:")
-        .with_validator(|input: &str| {
-            if input.contains("code=") || input.contains("error=") {
-                Ok(inquire::validator::Validation::Valid)
-            } else {
-                Ok(inquire::validator::Validation::Invalid(
-                    "URL must contain 'code=' or 'error=' parameter".into(),
-                ))
-            }
-        })
-        .prompt()
-        .map_err(|e| anyhow!("Input cancelled: {e}"))?;
+    let validator = |input: &str| {
+        if input.contains("code=") || input.contains("error=") {
+            ValidationResult::Valid
+        } else {
+            ValidationResult::Invalid("URL must contain 'code=' or 'error=' parameter".into())
+        }
+    };
+    let callback_url = text_prompt(
+        "Paste the callback URL here:",
+        Some("Enter to submit, Esc to cancel"),
+        Some(&validator),
+    )
+    .map_err(|e| anyhow!("Input error: {e}"))?;
+
+    let Some(callback_url) = callback_url else {
+        return Err(anyhow!("Input cancelled"));
+    };
 
     // Parse the callback URL
     let parsed_url = if callback_url.starts_with("http") {
@@ -476,7 +481,10 @@ fn authorize_github_device_flow(args: &LoginArgs) -> Result<OAuthTokens> {
         println!("Could not open browser automatically.");
     }
 
-    println!("Waiting for authorization (expires in {} seconds)...", device_response.expires_in);
+    println!(
+        "Waiting for authorization (expires in {} seconds)...",
+        device_response.expires_in
+    );
 
     // Step 3: Poll for access token
     let access_token = poll_github_access_token(
@@ -511,7 +519,10 @@ fn request_github_device_code(client_id: &str) -> Result<GitHubDeviceCodeRespons
 
     if response.status_code != 200 {
         let body = response.as_str().unwrap_or("(non-utf8 response)");
-        error!("GitHub device code request failed: HTTP {} - {}", response.status_code, body);
+        error!(
+            "GitHub device code request failed: HTTP {} - {}",
+            response.status_code, body
+        );
         return Err(anyhow!(
             "Failed to request GitHub device code: HTTP {}",
             response.status_code
@@ -519,7 +530,9 @@ fn request_github_device_code(client_id: &str) -> Result<GitHubDeviceCodeRespons
     }
 
     let data: GitHubDeviceCodeResponse = serde_json::from_str(
-        response.as_str().context("Invalid UTF-8 in GitHub response")?,
+        response
+            .as_str()
+            .context("Invalid UTF-8 in GitHub response")?,
     )
     .context("Failed to parse GitHub device code response")?;
 
@@ -564,7 +577,9 @@ fn poll_github_access_token(
             .send()
             .context("Failed to poll GitHub for access token")?;
 
-        let body = response.as_str().context("Invalid UTF-8 in GitHub response")?;
+        let body = response
+            .as_str()
+            .context("Invalid UTF-8 in GitHub response")?;
         let data: GitHubAccessTokenResponse =
             serde_json::from_str(body).context("Failed to parse GitHub access token response")?;
 
@@ -672,8 +687,8 @@ fn exchange_github_token_for_firebase(github_access_token: &str) -> Result<OAuth
     }
 
     // Parse successful response
-    let data: SignInWithIdpResponse =
-        serde_json::from_str(response_body).context("Failed to parse Firebase signInWithIdp response")?;
+    let data: SignInWithIdpResponse = serde_json::from_str(response_body)
+        .context("Failed to parse Firebase signInWithIdp response")?;
 
     // Calculate expiry timestamp
     let expires_in: i64 = data.expires_in.parse().unwrap_or(3600);
@@ -707,8 +722,6 @@ fn handle_mfa_in_cli(
     local_id: Option<&str>,
     email: Option<&str>,
 ) -> Result<OAuthTokens> {
-    use inquire::Text;
-
     const MAX_ATTEMPTS: u8 = 3;
 
     println!("\nMulti-factor authentication required.");
@@ -721,18 +734,23 @@ fn handle_mfa_in_cli(
             format!("MFA Code (attempt {attempt}/{MAX_ATTEMPTS})")
         };
 
-        let code = Text::new(&prompt)
-            .with_validator(|input: &str| {
-                if input.len() == 6 && input.chars().all(|c| c.is_ascii_digit()) {
-                    Ok(inquire::validator::Validation::Valid)
-                } else {
-                    Ok(inquire::validator::Validation::Invalid(
-                        "Code must be exactly 6 digits".into(),
-                    ))
-                }
-            })
-            .prompt()
-            .map_err(|e| anyhow!("MFA input cancelled: {e}"))?;
+        let validator = |input: &str| {
+            if input.len() == 6 && input.chars().all(|c| c.is_ascii_digit()) {
+                ValidationResult::Valid
+            } else {
+                ValidationResult::Invalid("Code must be exactly 6 digits".into())
+            }
+        };
+        let code = text_prompt(
+            &prompt,
+            Some("Enter 6-digit code, Esc to cancel"),
+            Some(&validator),
+        )
+        .map_err(|e| anyhow!("MFA input error: {e}"))?;
+
+        let Some(code) = code else {
+            return Err(anyhow!("MFA input cancelled"));
+        };
 
         match finalize_mfa(
             mfa_pending_credential,
@@ -1370,7 +1388,10 @@ mod tests {
         };
 
         let json = serde_json::to_value(&request).unwrap();
-        assert_eq!(json["postBody"], "access_token=abc123&providerId=github.com");
+        assert_eq!(
+            json["postBody"],
+            "access_token=abc123&providerId=github.com"
+        );
         assert_eq!(json["requestUri"], "http://localhost");
         assert_eq!(json["returnSecureToken"], true);
         assert_eq!(json["returnIdpCredential"], true);
@@ -1451,12 +1472,16 @@ mod tests {
 
     #[test]
     fn test_callback_url_parsing_with_error() {
-        let url = "http://localhost:8085/callback?error=access_denied&error_description=User%20denied";
+        let url =
+            "http://localhost:8085/callback?error=access_denied&error_description=User%20denied";
         let parsed = Url::parse(url).unwrap();
         let params: HashMap<_, _> = parsed.query_pairs().collect();
 
         assert!(params.contains_key("error"));
-        assert_eq!(params.get("error").map(|s| s.as_ref()), Some("access_denied"));
+        assert_eq!(
+            params.get("error").map(|s| s.as_ref()),
+            Some("access_denied")
+        );
         assert_eq!(
             params.get("error_description").map(|s| s.as_ref()),
             Some("User denied")
