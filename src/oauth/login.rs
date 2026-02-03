@@ -552,7 +552,7 @@ fn print_success_message(org_name: &str, oid: &str, webhook_url: &str) {
     let join_command = format!("{join_curl} {webhook_url}");
     let join_curl_windows = get_embedded_default("join_team_command_windows");
     let join_command_windows = join_curl_windows.replace("{URL}", webhook_url);
-    let team_url = format!("https://app.limacharlie.io/viberails/teams/{oid}");
+    let team_url = format!("https://app.viberails.io/viberails/teams/{oid}");
 
     println!();
     println!("  {}", "═".repeat(60).as_str().dimmed());
