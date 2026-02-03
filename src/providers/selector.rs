@@ -42,36 +42,28 @@ impl SelectableProvider {
 
 impl fmt::Display for SelectableProvider {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Note: Don't use colored crate here as labels go to ratatui's MultiSelect
+        // which doesn't interpret ANSI codes. The MultiSelect component handles
+        // styling for disabled items via its theme.
         match self.mode {
             SelectionMode::Install => {
                 if self.result.detected {
-                    write!(f, "{} {}", self.result.display_name, "[detected]".green())
+                    write!(f, "{} [detected]", self.result.display_name)
                 } else {
-                    write!(
-                        f,
-                        "{} {}",
-                        self.result.display_name.dimmed(),
-                        "[not found]".dimmed()
-                    )
+                    write!(f, "{} [not found]", self.result.display_name)
                 }
             }
             SelectionMode::Uninstall => {
                 if self.result.hooks_installed {
-                    write!(f, "{} {}", self.result.display_name, "[installed]".green())
+                    write!(f, "{} [installed]", self.result.display_name)
                 } else if self.result.detected {
                     write!(
                         f,
-                        "{} {}",
-                        self.result.display_name.dimmed(),
-                        "[available but not installed]".dimmed()
+                        "{} [available but not installed]",
+                        self.result.display_name
                     )
                 } else {
-                    write!(
-                        f,
-                        "{} {}",
-                        self.result.display_name.dimmed(),
-                        "[not found]".dimmed()
-                    )
+                    write!(f, "{} [not found]", self.result.display_name)
                 }
             }
         }
