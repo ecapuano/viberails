@@ -1,6 +1,16 @@
 use std::process::Command;
 
 fn main() {
+    // Embed icon in Windows executable
+    #[cfg(windows)]
+    {
+        let mut res = winres::WindowsResource::new();
+        res.set_icon("resources/windows/assets/icon.ico");
+        if let Err(e) = res.compile() {
+            eprintln!("cargo:warning=Failed to compile Windows resources: {e}");
+        }
+    }
+
     let git_hash = Command::new("git")
         .args(["rev-parse", "--short=7", "HEAD"])
         .output()

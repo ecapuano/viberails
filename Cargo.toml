@@ -39,6 +39,7 @@ whoami = "2.1"
 tempfile = "3.24"
 
 [build-dependencies]
+winres = "0.1"
 
 [lints.clippy]
 arithmetic_side_effects = "warn"
