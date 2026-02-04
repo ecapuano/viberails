@@ -198,7 +198,11 @@ jobs:
     integration-test:
         needs: dist
         if: always() && needs.dist.result == 'success'
-        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                os: [ubuntu-latest, macos-latest, windows-latest]
+
+        runs-on: ${{ matrix.os }}
 
         steps:
             - uses: actions/checkout@v4
@@ -209,8 +213,9 @@ jobs:
                   name: viberails-dist
                   path: dist
 
-            - name: Make binary executable
-              run: chmod +x dist/viberails-linux-x64
+            - name: Make binary executable (Unix)
+              if: runner.os != 'Windows'
+              run: chmod +x dist/viberails-*
 
             - name: Set up Python
               uses: actions/setup-python@v5
