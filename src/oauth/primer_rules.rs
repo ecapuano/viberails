@@ -12,19 +12,45 @@ use crate::cloud::lc_api::DRRule;
 ///
 /// This creates detection rules for security-relevant events like SSH key access,
 /// hook configuration tampering, and binary modifications.
+/// Rules are created in parallel to improve performance.
 pub fn create_dr_rules(oid: &str, jwt: &str) -> Result<()> {
     info!("Creating D&R rules for oid={oid}");
 
-    create_ssh_access_rule(oid, jwt)?;
-    create_hook_config_tamper_rule(oid, jwt)?;
-    create_binary_tamper_rule(oid, jwt)?;
-    create_persistence_modification_rule(oid, jwt)?;
-    create_cloud_creds_access_rule(oid, jwt)?;
-    create_email_sending_rule(oid, jwt)?;
-    create_macos_sensitive_data_rule(oid, jwt)?;
-    create_destructive_delete_rule(oid, jwt)?;
-    create_suspicious_tlds_rule(oid, jwt)?;
-    create_file_encryption_rule(oid, jwt)?;
+    // Define all rule creation functions
+    let rule_creators: Vec<fn(&str, &str) -> Result<()>> = vec![
+        create_ssh_access_rule,
+        create_hook_config_tamper_rule,
+        create_binary_tamper_rule,
+        create_persistence_modification_rule,
+        create_cloud_creds_access_rule,
+        create_email_sending_rule,
+        create_macos_sensitive_data_rule,
+        create_destructive_delete_rule,
+        create_suspicious_tlds_rule,
+        create_file_encryption_rule,
+    ];
+
+    // Create all rules in parallel using scoped threads
+    let results: Vec<Result<()>> = std::thread::scope(|s| {
+        let handles: Vec<_> = rule_creators
+            .into_iter()
+            .map(|create_fn| s.spawn(move || create_fn(oid, jwt)))
+            .collect();
+
+        // Collect all results, converting thread panics to errors
+        handles
+            .into_iter()
+            .map(|h| {
+                h.join()
+                    .map_err(|_| anyhow::anyhow!("Rule creation thread panicked"))?
+            })
+            .collect()
+    });
+
+    // Check for any errors and return the first one
+    for result in results {
+        result?;
+    }
 
     info!("D&R rules created successfully");
     Ok(())
