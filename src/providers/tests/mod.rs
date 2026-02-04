@@ -7,3 +7,4 @@ mod opencode_tests;
 mod openclaw_tests;
 mod registry_tests;
 mod selector_tests;
+mod transcript_tests;

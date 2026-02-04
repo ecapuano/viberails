@@ -1,5 +1,7 @@
 use std::{
+    fs::File,
     io::{BufRead, BufReader, BufWriter, Stdout, Write},
+    path::Path,
     time::Instant,
 };
 
@@ -40,6 +42,54 @@ mod tests;
 // - toolName: OpenClaw before_tool_call hook format (PR #6264)
 //   Note: "params" and "parameters" are not included as they're too generic
 const TOOL_HINTS: &[&str] = &["tool_input", "tool_name", "tool_use_id", "toolName"];
+
+// Hook event names that indicate the agent has finished responding
+// These hooks provide transcript_path but not the actual response content
+const STOP_HOOK_EVENTS: &[&str] = &["Stop", "afterAgentResponse", "AfterAgent", "session.idle"];
+
+/// Extract the last assistant response text from a transcript JSONL file.
+/// Returns the concatenated text content from the last assistant message.
+pub(crate) fn extract_last_response_from_transcript(transcript_path: &Path) -> Option<String> {
+    let file = File::open(transcript_path).ok()?;
+    let reader = BufReader::new(file);
+
+    let mut last_assistant_content: Option<Vec<Value>> = None;
+
+    for line in reader.lines().map_while(Result::ok) {
+        if let Ok(entry) = serde_json::from_str::<Value>(&line) {
+            // Check if this is an assistant message
+            if entry.get("type").and_then(|t| t.as_str()) == Some("assistant") {
+                // Extract the content array from message.content
+                if let Some(content) = entry
+                    .get("message")
+                    .and_then(|m| m.get("content"))
+                    .and_then(|c| c.as_array())
+                {
+                    last_assistant_content = Some(content.clone());
+                }
+            }
+        }
+    }
+
+    // Extract text from the content array
+    let content = last_assistant_content?;
+    let text_parts: Vec<&str> = content
+        .iter()
+        .filter_map(|item| {
+            if item.get("type").and_then(|t| t.as_str()) == Some("text") {
+                item.get("text").and_then(|t| t.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if text_parts.is_empty() {
+        None
+    } else {
+        Some(text_parts.join("\n"))
+    }
+}
 
 /// Enum representing all supported providers.
 /// Used for callback command routing.
@@ -144,6 +194,48 @@ pub trait LLmProviderTrait {
 
         false
     }
+
+    /// Check if this is a Stop/response completion event and enrich it with the response.
+    /// For Stop events, Claude Code only provides metadata (`transcript_path`, `session_id`, etc.)
+    /// but not the actual response. This method reads the transcript and adds the response.
+    fn enrich_stop_event(&self, value: Value) -> Value {
+        let mut value = value;
+        // Check if this is a stop event by looking at hook_event_name
+        let hook_event = value
+            .get("hook_event_name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        if !STOP_HOOK_EVENTS.contains(&hook_event) {
+            return value;
+        }
+
+        info!("Detected stop event: {hook_event}");
+
+        // Get the transcript path
+        let Some(transcript_path) = value.get("transcript_path").and_then(|v| v.as_str()) else {
+            warn!("Stop event missing transcript_path");
+            return value;
+        };
+
+        // Extract the last response from the transcript
+        let path = Path::new(transcript_path);
+        if let Some(response) = extract_last_response_from_transcript(path) {
+            info!(
+                "Extracted response from transcript ({} chars)",
+                response.len()
+            );
+
+            // Add the response to the payload
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert("assistant_response".to_string(), Value::String(response));
+            }
+        } else {
+            warn!("Could not extract response from transcript: {transcript_path}");
+        }
+
+        value
+    }
     fn io(&self, cloud: &CloudQuery, config: &Config) -> Result<()> {
         //
         // This'll fail if we're not authorized
@@ -192,7 +284,11 @@ pub trait LLmProviderTrait {
             // Notify path - only call cloud if audit_prompts is enabled
             //
             if config.user.audit_prompts {
-                if let Err(e) = cloud.notify(value) {
+                // Check if this is a Stop/response completion event
+                // If so, enrich the payload with the actual response from the transcript
+                let enriched_value = self.enrich_stop_event(value);
+
+                if let Err(e) = cloud.notify(enriched_value) {
                     error!("Unable to notify cloud ({e})");
                 }
             } else {
