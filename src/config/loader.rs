@@ -192,9 +192,13 @@ pub(crate) fn parse_team_url(url: &str) -> Result<String> {
         anyhow::bail!("Team URL must use HTTPS");
     }
 
-    // Validate host exists
-    if parsed.host_str().is_none() {
-        anyhow::bail!("Team URL must have a valid host");
+    // Validate host exists and is a LimaCharlie hook domain
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| anyhow::anyhow!("Team URL must have a valid host"))?;
+
+    if !host.ends_with(".hook.limacharlie.io") {
+        anyhow::bail!("Team URL must be a LimaCharlie hook URL (*.hook.limacharlie.io)");
     }
 
     // Extract path segments: /{oid}/{adapter_name}/{secret}
@@ -204,7 +208,9 @@ pub(crate) fn parse_team_url(url: &str) -> Result<String> {
         .collect();
 
     if segments.len() < 3 {
-        anyhow::bail!("Invalid team URL format. Expected: https://hooks.domain/oid/name/secret");
+        anyhow::bail!(
+            "Invalid team URL format. Expected: https://<id>.hook.limacharlie.io/<oid>/<name>/<secret>"
+        );
     }
 
     // First segment is the oid

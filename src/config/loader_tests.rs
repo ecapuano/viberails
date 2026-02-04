@@ -413,21 +413,21 @@ fn test_clean_logs_in_dir_reports_correct_bytes() {
 
 #[test]
 fn test_parse_team_url_valid() {
-    let url = format!("https://hooks.limacharlie.io/abc123/{PROJECT_NAME}/secret-token");
+    let url = format!("https://abc123.hook.limacharlie.io/org-id/{PROJECT_NAME}/secret-token");
     let oid = parse_team_url(&url).unwrap();
-    assert_eq!(oid, "abc123");
+    assert_eq!(oid, "org-id");
 }
 
 #[test]
 fn test_parse_team_url_valid_with_trailing_slash() {
-    let url = "https://hooks.limacharlie.io/org-id-456/adapter/secret/";
+    let url = "https://9157798c50af.hook.limacharlie.io/org-id-456/adapter/secret/";
     let oid = parse_team_url(url).unwrap();
     assert_eq!(oid, "org-id-456");
 }
 
 #[test]
 fn test_parse_team_url_rejects_http() {
-    let url = format!("http://hooks.limacharlie.io/abc123/{PROJECT_NAME}/secret");
+    let url = format!("http://abc123.hook.limacharlie.io/org-id/{PROJECT_NAME}/secret");
     let result = parse_team_url(&url);
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("HTTPS"));
@@ -435,7 +435,7 @@ fn test_parse_team_url_rejects_http() {
 
 #[test]
 fn test_parse_team_url_rejects_missing_segments() {
-    let url = format!("https://hooks.limacharlie.io/abc123/{PROJECT_NAME}");
+    let url = format!("https://abc123.hook.limacharlie.io/org-id/{PROJECT_NAME}");
     let result = parse_team_url(&url);
     assert!(result.is_err());
     assert!(
@@ -448,7 +448,7 @@ fn test_parse_team_url_rejects_missing_segments() {
 
 #[test]
 fn test_parse_team_url_rejects_empty_oid() {
-    let url = format!("https://hooks.limacharlie.io//{PROJECT_NAME}/secret");
+    let url = format!("https://abc123.hook.limacharlie.io//{PROJECT_NAME}/secret");
     let result = parse_team_url(&url);
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("empty"));
@@ -456,7 +456,7 @@ fn test_parse_team_url_rejects_empty_oid() {
 
 #[test]
 fn test_parse_team_url_rejects_no_path() {
-    let url = "https://hooks.limacharlie.io";
+    let url = "https://abc123.hook.limacharlie.io";
     let result = parse_team_url(url);
     assert!(result.is_err());
 }
@@ -471,7 +471,42 @@ fn test_parse_team_url_rejects_invalid_url() {
 
 #[test]
 fn test_parse_team_url_rejects_no_host() {
-    let url = format!("https:///abc123/{PROJECT_NAME}/secret");
+    let url = format!("https:///org-id/{PROJECT_NAME}/secret");
     let result = parse_team_url(&url);
     assert!(result.is_err());
+}
+
+#[test]
+fn test_parse_team_url_rejects_invalid_domain() {
+    let url = format!("https://evil.example.com/org-id/{PROJECT_NAME}/secret");
+    let result = parse_team_url(&url);
+    assert!(result.is_err());
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("LimaCharlie hook URL"));
+}
+
+#[test]
+fn test_parse_team_url_rejects_similar_domain() {
+    // Ensure we don't accept domains that just contain the string
+    let url = format!("https://hook.limacharlie.io.evil.com/org-id/{PROJECT_NAME}/secret");
+    let result = parse_team_url(&url);
+    assert!(result.is_err());
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("LimaCharlie hook URL"));
+}
+
+#[test]
+fn test_parse_team_url_rejects_bare_domain() {
+    // hook.limacharlie.io without a subdomain is not valid
+    let url = format!("https://hook.limacharlie.io/org-id/{PROJECT_NAME}/secret");
+    let result = parse_team_url(&url);
+    assert!(result.is_err());
+    assert!(result
+        .unwrap_err()
+        .to_string()
+        .contains("LimaCharlie hook URL"));
 }
