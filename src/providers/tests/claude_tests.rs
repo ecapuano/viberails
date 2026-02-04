@@ -1,7 +1,6 @@
 use serde_json::json;
 
-use crate::common::EXECUTABLE_NAME;
-use crate::providers::claude::Claude;
+use crate::{common::EXECUTABLE_NAME, providers::claudecode::ClaudeCode};
 
 fn test_exe_path() -> String {
     format!("/usr/bin/{EXECUTABLE_NAME}")
@@ -13,7 +12,7 @@ fn test_command() -> String {
 
 #[test]
 fn test_install_into_empty_json() {
-    let claude = Claude::with_custom_path("/usr/bin/test-program").unwrap();
+    let claude = ClaudeCode::with_custom_path("/usr/bin/test-program").unwrap();
     let mut json = json!({});
 
     claude.install_into("PreToolUse", &mut json).unwrap();
@@ -32,7 +31,7 @@ fn test_install_into_empty_json() {
 
 #[test]
 fn test_install_into_existing_hooks_object() {
-    let claude = Claude::with_custom_path("/usr/bin/test-program").unwrap();
+    let claude = ClaudeCode::with_custom_path("/usr/bin/test-program").unwrap();
     let mut json = json!({
         "hooks": {}
     });
@@ -47,7 +46,7 @@ fn test_install_into_existing_hooks_object() {
 
 #[test]
 fn test_install_into_existing_hook_type_with_different_matcher() {
-    let claude = Claude::with_custom_path("/usr/bin/test-program").unwrap();
+    let claude = ClaudeCode::with_custom_path("/usr/bin/test-program").unwrap();
     let mut json = json!({
         "hooks": {
             "PreToolUse": [
@@ -77,7 +76,7 @@ fn test_install_into_existing_hook_type_with_different_matcher() {
 
 #[test]
 fn test_install_into_prepends_to_existing_wildcard_matcher() {
-    let claude = Claude::with_custom_path("/usr/bin/test-program").unwrap();
+    let claude = ClaudeCode::with_custom_path("/usr/bin/test-program").unwrap();
     let mut json = json!({
         "hooks": {
             "PreToolUse": [
@@ -109,7 +108,7 @@ fn test_install_into_prepends_to_existing_wildcard_matcher() {
 
 #[test]
 fn test_install_into_skips_if_already_installed() {
-    let claude = Claude::with_custom_path("/usr/bin/test-program").unwrap();
+    let claude = ClaudeCode::with_custom_path("/usr/bin/test-program").unwrap();
     let mut json = json!({
         "hooks": {
             "PreToolUse": [
@@ -135,7 +134,7 @@ fn test_install_into_skips_if_already_installed() {
 
 #[test]
 fn test_install_into_different_hook_types() {
-    let claude = Claude::with_custom_path("/usr/bin/test-program").unwrap();
+    let claude = ClaudeCode::with_custom_path("/usr/bin/test-program").unwrap();
     let mut json = json!({});
 
     claude.install_into("PreToolUse", &mut json).unwrap();
@@ -147,7 +146,7 @@ fn test_install_into_different_hook_types() {
 
 #[test]
 fn test_install_into_fails_on_non_object() {
-    let claude = Claude::with_custom_path("/usr/bin/test-program").unwrap();
+    let claude = ClaudeCode::with_custom_path("/usr/bin/test-program").unwrap();
     let mut json = json!([]);
 
     let result = claude.install_into("PreToolUse", &mut json);
@@ -156,7 +155,7 @@ fn test_install_into_fails_on_non_object() {
 
 #[test]
 fn test_install_into_fails_if_hooks_not_object() {
-    let claude = Claude::with_custom_path("/usr/bin/test-program").unwrap();
+    let claude = ClaudeCode::with_custom_path("/usr/bin/test-program").unwrap();
     let mut json = json!({
         "hooks": "not an object"
     });
@@ -167,7 +166,7 @@ fn test_install_into_fails_if_hooks_not_object() {
 
 #[test]
 fn test_uninstall_from_removes_our_hook() {
-    let claude = Claude::with_custom_path(test_exe_path()).unwrap();
+    let claude = ClaudeCode::with_custom_path(test_exe_path()).unwrap();
     let mut json = json!({
         "hooks": {
             "PreToolUse": [
@@ -191,7 +190,7 @@ fn test_uninstall_from_removes_our_hook() {
 
 #[test]
 fn test_uninstall_from_preserves_other_hooks() {
-    let claude = Claude::with_custom_path(test_exe_path()).unwrap();
+    let claude = ClaudeCode::with_custom_path(test_exe_path()).unwrap();
     let mut json = json!({
         "hooks": {
             "PreToolUse": [
@@ -219,7 +218,7 @@ fn test_uninstall_from_preserves_other_hooks() {
 
 #[test]
 fn test_uninstall_from_no_hooks_object() {
-    let claude = Claude::with_custom_path("/usr/bin/test-program").unwrap();
+    let claude = ClaudeCode::with_custom_path("/usr/bin/test-program").unwrap();
     let mut json = json!({});
 
     // Should succeed without error (just warns)
@@ -228,7 +227,7 @@ fn test_uninstall_from_no_hooks_object() {
 
 #[test]
 fn test_uninstall_from_no_hook_type() {
-    let claude = Claude::with_custom_path("/usr/bin/test-program").unwrap();
+    let claude = ClaudeCode::with_custom_path("/usr/bin/test-program").unwrap();
     let mut json = json!({
         "hooks": {}
     });
@@ -239,7 +238,7 @@ fn test_uninstall_from_no_hook_type() {
 
 #[test]
 fn test_uninstall_from_no_wildcard_matcher() {
-    let claude = Claude::with_custom_path("/usr/bin/test-program").unwrap();
+    let claude = ClaudeCode::with_custom_path("/usr/bin/test-program").unwrap();
     let mut json = json!({
         "hooks": {
             "PreToolUse": [
@@ -265,7 +264,7 @@ fn test_uninstall_from_no_wildcard_matcher() {
 
 #[test]
 fn test_uninstall_from_hook_not_present() {
-    let claude = Claude::with_custom_path("/usr/bin/test-program").unwrap();
+    let claude = ClaudeCode::with_custom_path("/usr/bin/test-program").unwrap();
     let mut json = json!({
         "hooks": {
             "PreToolUse": [
@@ -292,7 +291,7 @@ fn test_uninstall_from_hook_not_present() {
 
 #[test]
 fn test_uninstall_from_different_hook_types() {
-    let claude = Claude::with_custom_path(test_exe_path()).unwrap();
+    let claude = ClaudeCode::with_custom_path(test_exe_path()).unwrap();
     let mut json = json!({
         "hooks": {
             "PreToolUse": [

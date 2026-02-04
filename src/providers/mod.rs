@@ -1,4 +1,5 @@
 use std::{
+    fmt::Display,
     fs::File,
     io::{BufRead, BufReader, BufWriter, Stdout, Write},
     path::Path,
@@ -7,13 +8,13 @@ use std::{
 
 use anyhow::Result;
 
-pub mod claude;
+pub mod claudecode;
 pub mod codex;
 pub mod cursor;
 pub mod discovery;
 pub mod gemini;
-pub mod opencode;
 pub mod openclaw;
+pub mod opencode;
 pub mod registry;
 pub mod selector;
 
@@ -228,9 +229,7 @@ pub struct HookEntry {
     pub command: String,
 }
 
-pub trait LLmProviderTrait {
-    #[allow(dead_code)]
-    fn name(&self) -> &'static str;
+pub trait LLmProviderTrait: Display {
     fn install(&self, hook_type: &str) -> Result<()>;
     fn uninstall(&self, hook_type: &str) -> Result<()>;
     fn list(&self) -> Result<Vec<HookEntry>>;

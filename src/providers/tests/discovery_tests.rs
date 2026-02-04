@@ -1,18 +1,20 @@
 #![allow(clippy::unwrap_used)]
 
+use std::fmt::Display;
+
 use crate::providers::discovery::{DiscoveryResult, ProviderDiscovery, ProviderFactory};
 use crate::providers::{HookEntry, LLmProviderTrait};
 
 /// Mock provider for testing discovery system
-struct MockProvider {
-    name: &'static str,
+struct MockProvider {}
+
+impl Display for MockProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MockProvider")
+    }
 }
 
 impl LLmProviderTrait for MockProvider {
-    fn name(&self) -> &'static str {
-        self.name
-    }
-
     fn install(&self, _hook_type: &str) -> anyhow::Result<()> {
         Ok(())
     }
@@ -56,9 +58,7 @@ impl ProviderDiscovery for AlwaysDetectedDiscovery {
 
 impl ProviderFactory for AlwaysDetectedDiscovery {
     fn create(&self) -> anyhow::Result<Box<dyn LLmProviderTrait>> {
-        Ok(Box::new(MockProvider {
-            name: "always-detected",
-        }))
+        Ok(Box::new(MockProvider {}))
     }
 }
 
@@ -155,7 +155,7 @@ fn test_provider_factory_create_success() {
 
     assert!(provider.is_ok());
     let provider = provider.unwrap();
-    assert_eq!(provider.name(), "always-detected");
+    assert_eq!(provider.to_string().as_str(), "MockProvider");
 }
 
 #[test]
@@ -166,28 +166,28 @@ fn test_provider_factory_create_failure() {
     assert!(provider.is_err());
 }
 
-// Tests for ClaudeDiscovery (the real implementation)
+// Tests for ClaudeCodeDiscovery (the real implementation)
 #[test]
 fn test_claude_discovery_id() {
-    use crate::providers::claude::ClaudeDiscovery;
+    use crate::providers::claudecode::ClaudeCodeDiscovery;
 
-    let discovery = ClaudeDiscovery;
+    let discovery = ClaudeCodeDiscovery;
     assert_eq!(discovery.id(), "claude-code");
 }
 
 #[test]
 fn test_claude_discovery_display_name() {
-    use crate::providers::claude::ClaudeDiscovery;
+    use crate::providers::claudecode::ClaudeCodeDiscovery;
 
-    let discovery = ClaudeDiscovery;
+    let discovery = ClaudeCodeDiscovery;
     assert_eq!(discovery.display_name(), "Claude Code");
 }
 
 #[test]
 fn test_claude_discovery_supported_hooks() {
-    use crate::providers::claude::ClaudeDiscovery;
+    use crate::providers::claudecode::ClaudeCodeDiscovery;
 
-    let discovery = ClaudeDiscovery;
+    let discovery = ClaudeCodeDiscovery;
     let hooks = discovery.supported_hooks();
 
     assert!(hooks.contains(&"PreToolUse"));
@@ -197,9 +197,9 @@ fn test_claude_discovery_supported_hooks() {
 
 #[test]
 fn test_claude_discovery_returns_valid_result() {
-    use crate::providers::claude::ClaudeDiscovery;
+    use crate::providers::claudecode::ClaudeCodeDiscovery;
 
-    let discovery = ClaudeDiscovery;
+    let discovery = ClaudeCodeDiscovery;
     let result = discovery.discover();
 
     // The result should always have valid id and display_name
@@ -214,9 +214,9 @@ fn test_claude_discovery_returns_valid_result() {
 
 #[test]
 fn test_claude_discovery_create_provider() {
-    use crate::providers::claude::ClaudeDiscovery;
+    use crate::providers::claudecode::ClaudeCodeDiscovery;
 
-    let discovery = ClaudeDiscovery;
+    let discovery = ClaudeCodeDiscovery;
     let result = discovery.create();
 
     // Should succeed (just creates the struct, doesn't require file to exist)

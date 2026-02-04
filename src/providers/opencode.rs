@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::{fs, io::Write, path::PathBuf};
 
 use anyhow::{Context, Result, anyhow};
@@ -185,11 +186,13 @@ impl OpenCode {
     }
 }
 
-impl LLmProviderTrait for OpenCode {
-    fn name(&self) -> &'static str {
-        "opencode"
+impl Display for OpenCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "OpenCode")
     }
+}
 
+impl LLmProviderTrait for OpenCode {
     fn install(&self, hook_type: &str) -> Result<()> {
         info!("Installing {hook_type} in {}", self.config_file.display());
 
