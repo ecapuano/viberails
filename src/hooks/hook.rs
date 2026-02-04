@@ -8,7 +8,7 @@ use crate::{
     common::PROJECT_NAME,
     config::Config,
     providers::{
-        LLmProviderTrait, Providers, claude::Claude, cursor::Cursor, gemini::Gemini,
+        LLmProviderTrait, Providers, claudecode::ClaudeCode, cursor::Cursor, gemini::Gemini,
         log_payload_structure, openclaw::OpenClaw, opencode::OpenCode,
     },
 };
@@ -32,7 +32,10 @@ pub fn hook(provider: Providers) -> Result<()> {
     );
 
     if !config.org.authorized() {
-        debug!("Organization not authorized (oid={}, url={})", config.org.oid, config.org.url);
+        debug!(
+            "Organization not authorized (oid={}, url={})",
+            config.org.oid, config.org.url
+        );
         bail!("not authorized");
     }
     debug!("Organization authorized: oid={}", config.org.oid);
@@ -58,7 +61,7 @@ pub fn hook(provider: Providers) -> Result<()> {
 
     debug!("Delegating to provider-specific IO handler");
     match provider {
-        Providers::ClaudeCode => Claude::new()?.io(&cloud, &config),
+        Providers::ClaudeCode => ClaudeCode::new()?.io(&cloud, &config),
         Providers::Cursor => Cursor::new()?.io(&cloud, &config),
         Providers::GeminiCli => Gemini::new()?.io(&cloud, &config),
         Providers::OpenCode => OpenCode::new()?.io(&cloud, &config),

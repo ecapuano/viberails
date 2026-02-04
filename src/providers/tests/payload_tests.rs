@@ -5,12 +5,11 @@
 
 use serde_json::json;
 
-use crate::providers::LLmProviderTrait;
-use crate::providers::claude::Claude;
+use crate::providers::{LLmProviderTrait, claudecode::ClaudeCode};
 
 /// Helper to create a Claude provider for testing is_tool_use
-fn test_provider() -> Claude {
-    Claude::with_custom_path("/usr/bin/test").unwrap()
+fn test_provider() -> ClaudeCode {
+    ClaudeCode::with_custom_path("/usr/bin/test").unwrap()
 }
 
 // =============================================================================

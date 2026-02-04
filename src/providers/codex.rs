@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::{fs, io::Write, path::PathBuf};
 
 use anyhow::{Context, Result, anyhow};
@@ -172,11 +173,13 @@ impl Codex {
     }
 }
 
-impl LLmProviderTrait for Codex {
-    fn name(&self) -> &'static str {
-        "codex"
+impl Display for Codex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Codex")
     }
+}
 
+impl LLmProviderTrait for Codex {
     fn install(&self, hook_type: &str) -> Result<()> {
         info!("Installing {hook_type} in {}", self.config_file.display());
 

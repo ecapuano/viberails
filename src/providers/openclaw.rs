@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::{fs, io::Write, path::PathBuf};
 
 use anyhow::{Context, Result, anyhow};
@@ -46,11 +47,7 @@ impl ProviderDiscovery for OpenClawDiscovery {
 
     fn discover(&self) -> DiscoveryResult {
         let detected = Self::is_detected();
-        let detected_path = if detected {
-            Self::openclaw_dir()
-        } else {
-            None
-        };
+        let detected_path = if detected { Self::openclaw_dir() } else { None };
 
         DiscoveryResult {
             id: self.id(),
@@ -327,9 +324,8 @@ export default {{
 
         // Write index.ts
         let index_path = plugin_dir.join("index.ts");
-        fs::write(&index_path, self.generate_plugin_index()).with_context(|| {
-            format!("Unable to write index.ts at {}", index_path.display())
-        })?;
+        fs::write(&index_path, self.generate_plugin_index())
+            .with_context(|| format!("Unable to write index.ts at {}", index_path.display()))?;
 
         info!(
             "Installed {PROJECT_NAME} plugin at {}",
@@ -347,10 +343,7 @@ export default {{
             && !parent.exists()
         {
             fs::create_dir_all(parent).with_context(|| {
-                format!(
-                    "Unable to create config directory at {}",
-                    parent.display()
-                )
+                format!("Unable to create config directory at {}", parent.display())
             })?;
         }
 
@@ -424,10 +417,7 @@ export default {{
         fd.write_all(json_str.as_bytes())
             .with_context(|| format!("Failed to write to {}", config_file.display()))?;
 
-        info!(
-            "Enabled {PROJECT_NAME} plugin in {}",
-            config_file.display()
-        );
+        info!("Enabled {PROJECT_NAME} plugin in {}", config_file.display());
 
         Ok(())
     }
@@ -539,11 +529,13 @@ export default {{
     }
 }
 
-impl LLmProviderTrait for OpenClaw {
-    fn name(&self) -> &'static str {
-        "openclaw"
+impl Display for OpenClaw {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "OpenClaw")
     }
+}
 
+impl LLmProviderTrait for OpenClaw {
     fn install(&self, hook_type: &str) -> Result<()> {
         let Some((install_dir, config_name)) = OpenClawDiscovery::openclaw_paths() else {
             anyhow::bail!("No OpenClaw installation detected");
@@ -553,10 +545,7 @@ impl LLmProviderTrait for OpenClaw {
             anyhow::bail!("OpenClaw directory not found at {}", install_dir.display());
         }
 
-        info!(
-            "Installing {hook_type} plugin in {}",
-            install_dir.display()
-        );
+        info!("Installing {hook_type} plugin in {}", install_dir.display());
 
         // Install plugin files (manifest and index.ts)
         self.install_plugin_files(&install_dir)?;
@@ -577,10 +566,7 @@ impl LLmProviderTrait for OpenClaw {
             return Ok(());
         }
 
-        info!(
-            "Uninstalling {hook_type} from {}",
-            install_dir.display()
-        );
+        info!("Uninstalling {hook_type} from {}", install_dir.display());
 
         // Remove plugin files
         Self::uninstall_plugin_files(&install_dir)?;

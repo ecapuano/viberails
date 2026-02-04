@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::{fs, io::Write, path::PathBuf};
 
 use anyhow::{Context, Result, anyhow};
@@ -222,11 +223,13 @@ impl Cursor {
     }
 }
 
-impl LLmProviderTrait for Cursor {
-    fn name(&self) -> &'static str {
-        "cursor"
+impl Display for Cursor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Cursor")
     }
+}
 
+impl LLmProviderTrait for Cursor {
     fn install(&self, hook_type: &str) -> Result<()> {
         info!("Installing {hook_type} in {}", self.hooks_file.display());
 

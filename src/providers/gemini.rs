@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::{fs, io::Write, path::PathBuf};
 
 use anyhow::{Context, Result, anyhow};
@@ -252,11 +253,13 @@ impl Gemini {
     }
 }
 
-impl LLmProviderTrait for Gemini {
-    fn name(&self) -> &'static str {
-        "gemini-cli"
+impl Display for Gemini {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Gemini")
     }
+}
 
+impl LLmProviderTrait for Gemini {
     fn install(&self, hook_type: &str) -> Result<()> {
         info!("Installing {hook_type} in {}", self.settings.display());
 

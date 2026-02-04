@@ -1,4 +1,5 @@
 use std::{
+    fmt::Display,
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -19,16 +20,16 @@ pub const CLAUDE_HOOKS: &[&str] = &["PreToolUse", "UserPromptSubmit", "Stop"];
 /// Discovery implementation for Claude Code.
 /// This struct handles checking whether Claude Code is installed
 /// without any side effects.
-pub struct ClaudeDiscovery;
+pub struct ClaudeCodeDiscovery;
 
-impl ClaudeDiscovery {
+impl ClaudeCodeDiscovery {
     /// Get the Claude config directory path.
     fn claude_dir() -> Option<PathBuf> {
         dirs::home_dir().map(|h| h.join(".claude"))
     }
 }
 
-impl ProviderDiscovery for ClaudeDiscovery {
+impl ProviderDiscovery for ClaudeCodeDiscovery {
     fn id(&self) -> &'static str {
         "claude-code"
     }
@@ -61,18 +62,18 @@ impl ProviderDiscovery for ClaudeDiscovery {
     }
 }
 
-impl ProviderFactory for ClaudeDiscovery {
+impl ProviderFactory for ClaudeCodeDiscovery {
     fn create(&self) -> Result<Box<dyn LLmProviderTrait>> {
-        Ok(Box::new(Claude::new()?))
+        Ok(Box::new(ClaudeCode::new()?))
     }
 }
 
-pub struct Claude {
+pub struct ClaudeCode {
     command_line: String,
     settings: PathBuf,
 }
 
-impl Claude {
+impl ClaudeCode {
     pub fn with_custom_path<P>(self_program: P) -> Result<Self>
     where
         P: AsRef<Path>,
@@ -97,7 +98,7 @@ impl Claude {
         // current_exe(), so the hook command is consistent regardless of where viberails
         // is run from. This prevents duplicate hooks when running from different locations.
         let exe = binary_location()?;
-        Claude::with_custom_path(exe)
+        ClaudeCode::with_custom_path(exe)
     }
 
     /// Ensure the settings file exists, creating it with an empty JSON object if needed.
@@ -258,11 +259,13 @@ impl Claude {
     }
 }
 
-impl LLmProviderTrait for Claude {
-    fn name(&self) -> &'static str {
-        "claude-code"
+impl Display for ClaudeCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ClaudeCode")
     }
+}
 
+impl LLmProviderTrait for ClaudeCode {
     // Install
     fn install(&self, hook_type: &str) -> anyhow::Result<()> {
         info!("Installing {hook_type} in {}", self.settings.display());

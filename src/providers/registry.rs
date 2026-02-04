@@ -1,10 +1,10 @@
-use super::claude::ClaudeDiscovery;
+use super::claudecode::ClaudeCodeDiscovery;
 use super::codex::CodexDiscovery;
 use super::cursor::CursorDiscovery;
 use super::discovery::{DiscoveryResult, ProviderFactory};
 use super::gemini::GeminiDiscovery;
-use super::opencode::OpenCodeDiscovery;
 use super::openclaw::OpenClawDiscovery;
+use super::opencode::OpenCodeDiscovery;
 
 /// Central registry of all known providers.
 /// Manages discovery and creation of provider instances.
@@ -24,7 +24,7 @@ impl ProviderRegistry {
     pub fn new() -> Self {
         // Register all built-in providers
         let providers: Vec<Box<dyn ProviderFactory>> = vec![
-            Box::new(ClaudeDiscovery),
+            Box::new(ClaudeCodeDiscovery),
             Box::new(CursorDiscovery),
             Box::new(GeminiDiscovery),
             Box::new(CodexDiscovery),
