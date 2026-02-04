@@ -39,7 +39,7 @@ struct TeamOption {
     choice: TeamChoice,
 }
 
-const ORG_CREATE_TIMEOUT: Duration = Duration::from_secs(120);
+const ORG_CREATE_TIMEOUT: Duration = Duration::from_mins(2);
 
 const ORG_DEFAULT_LOCATION: &str = "auto";
 

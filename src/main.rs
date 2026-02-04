@@ -10,8 +10,8 @@ use log::warn;
 
 use viberails::{
     JoinTeamArgs, Logging, LoginArgs, MenuAction, PROJECT_NAME, PROJECT_VERSION, Providers,
-    codex_hook, get_menu_options, hook, install, is_authorized, join_team, list, login,
-    poll_upgrade, show_configuration,
+    clean_debug_logs, codex_hook, get_debug_log_path, get_menu_options, hook, install,
+    is_authorized, join_team, list, login, poll_upgrade, set_debug_mode, show_configuration,
     tui::{MessageStyle, message_prompt, select_prompt_with_shortcuts, text_prompt},
     uninstall, uninstall_hooks, upgrade,
 };
@@ -53,6 +53,19 @@ enum Command {
     /// Upgrade
     Upgrade,
 
+    /// Enable or disable debug mode for troubleshooting hooks.
+    /// Note: Debug logs accumulate over time (one file per hook invocation).
+    /// Use 'viberails debug-clean' to remove old logs.
+    Debug {
+        /// Disable debug mode
+        #[arg(long, short)]
+        disable: bool,
+    },
+
+    /// Clean up debug log files to free disk space
+    #[command(visible_alias = "clean-debug")]
+    DebugClean,
+
     // Provider callback commands (internal - used by hooks)
     /// Claude Code callback
     #[command(visible_alias = "cc", hide = true)]
@@ -93,6 +106,10 @@ fn init_logging(verbose: bool) -> Result<()> {
 
 /// Wait for user to press any key before continuing.
 /// Used to let users see output before returning to the menu.
+///
+/// Parameters: None
+///
+/// Returns: Nothing
 fn wait_for_keypress() {
     print!("\nPress any key to continue...");
     let _ = io::stdout().flush();
@@ -111,7 +128,28 @@ fn wait_for_keypress() {
     println!();
 }
 
-/// Display the interactive menu and execute the selected action in a loop
+/// Initialize logging for callback commands with debug mode support.
+/// Checks config for debug flag and enables verbose logging if set.
+///
+/// Parameters: None
+///
+/// Returns: Result indicating success or failure
+fn init_callback_logging() -> Result<()> {
+    // Load config to check debug mode - use default if config doesn't exist yet
+    let debug_mode = viberails::config::Config::load().is_ok_and(|c| c.user.debug);
+
+    let file_name = format!("{PROJECT_NAME}.log");
+    Logging::new()
+        .with_file(file_name)
+        .with_debug_mode(debug_mode)
+        .start()
+}
+
+/// Display the interactive menu and execute the selected action in a loop.
+///
+/// Parameters: None
+///
+/// Returns: Result indicating success or failure
 fn show_menu() -> Result<()> {
     loop {
         let options = get_menu_options();
@@ -211,7 +249,25 @@ fn show_menu() -> Result<()> {
 fn main() -> Result<()> {
     let args = UserArgs::parse();
 
-    init_logging(args.verbose)?;
+    // Use callback-specific logging for provider callbacks (supports debug mode)
+    // Use regular logging for other commands
+    let is_callback = matches!(
+        args.command,
+        Some(
+            Command::ClaudeCallback
+                | Command::CursorCallback
+                | Command::GeminiCallback
+                | Command::CodexCallback { .. }
+                | Command::OpencodeCallback
+                | Command::OpenclawCallback
+        )
+    );
+
+    if is_callback {
+        init_callback_logging()?;
+    } else {
+        init_logging(args.verbose)?;
+    }
 
     let ret = match args.command {
         None => show_menu(),
@@ -225,6 +281,20 @@ fn main() -> Result<()> {
         Some(Command::InitTeam(args)) => login(&args),
         Some(Command::JoinTeam(args)) => join_team(&args),
         Some(Command::Upgrade) => upgrade(),
+        Some(Command::Debug { disable }) => {
+            set_debug_mode(!disable)?;
+            if !disable {
+                println!();
+                println!("Debug log location: {}", get_debug_log_path()?.display());
+                println!();
+                println!("Note: Debug logs accumulate over time. Run 'viberails debug-clean' to remove old logs.");
+            }
+            Ok(())
+        }
+        Some(Command::DebugClean) => {
+            clean_debug_logs()?;
+            Ok(())
+        }
 
         // Provider callbacks
         Some(Command::ClaudeCallback) => hook(Providers::ClaudeCode),

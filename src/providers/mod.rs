@@ -20,7 +20,7 @@ pub mod selector;
 // Re-exports for public API (may be used by external code or future extensions)
 #[allow(unused_imports)]
 pub use discovery::{DiscoveryResult, ProviderDiscovery, ProviderFactory};
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 pub use registry::ProviderRegistry;
 pub use selector::{select_providers, select_providers_for_uninstall};
 
@@ -47,8 +47,23 @@ const TOOL_HINTS: &[&str] = &["tool_input", "tool_name", "tool_use_id", "toolNam
 // These hooks provide transcript_path but not the actual response content
 const STOP_HOOK_EVENTS: &[&str] = &["Stop", "afterAgentResponse", "AfterAgent", "session.idle"];
 
+// Keys that might contain prompt/message text across various providers
+const PROMPT_HINTS: &[&str] = &[
+    "content",
+    "prompt",
+    "message",
+    "text",
+    "user_prompt",
+    "input",
+    "query",
+];
+
 /// Extract the last assistant response text from a transcript JSONL file.
-/// Returns the concatenated text content from the last assistant message.
+///
+/// Parameters:
+///   - `transcript_path`: Path to the JSONL transcript file
+///
+/// Returns: The concatenated text content from the last assistant message, or None
 pub(crate) fn extract_last_response_from_transcript(transcript_path: &Path) -> Option<String> {
     let file = File::open(transcript_path).ok()?;
     let reader = BufReader::new(file);
@@ -88,6 +103,78 @@ pub(crate) fn extract_last_response_from_transcript(transcript_path: &Path) -> O
         None
     } else {
         Some(text_parts.join("\n"))
+    }
+}
+
+/// Log the payload structure for debugging and format discovery.
+/// This helps understand provider-specific payload formats for normalization.
+/// Uses debug level for detailed payload capture, info level for summaries.
+///
+/// Parameters:
+///   - value: The JSON payload received from the provider hook
+///
+/// Returns: Nothing, logs at debug/info levels
+pub fn log_payload_structure(value: &Value) {
+    // Log the full payload at debug level for detailed analysis
+    if let Ok(pretty) = serde_json::to_string_pretty(value) {
+        debug!("PAYLOAD_CAPTURE (full JSON):\n{pretty}");
+    }
+
+    // Log top-level keys for quick overview (info level)
+    if let Some(obj) = value.as_object() {
+        let keys: Vec<&str> = obj.keys().map(String::as_str).collect();
+        info!("PAYLOAD_KEYS: {keys:?}");
+
+        // Check for tool-related keys
+        let tool_keys: Vec<&str> = TOOL_HINTS
+            .iter()
+            .filter(|k| obj.contains_key(**k))
+            .copied()
+            .collect();
+        if tool_keys.is_empty() {
+            info!("PAYLOAD_TYPE: prompt_use");
+        } else {
+            info!("PAYLOAD_TYPE: tool_use (matched keys: {tool_keys:?})");
+
+            // Log tool-specific details at debug level
+            if let Some(tool_name) = obj.get("tool_name").or_else(|| obj.get("toolName")) {
+                debug!("TOOL_NAME: {tool_name}");
+            }
+            if let Some(tool_input) = obj.get("tool_input").or_else(|| obj.get("params"))
+                && let Ok(input_str) = serde_json::to_string(tool_input)
+            {
+                // Use char-safe truncation to avoid panic on multi-byte UTF-8
+                let truncated = if input_str.chars().count() > 500 {
+                    let prefix: String = input_str.chars().take(500).collect();
+                    format!("{prefix}... [truncated]")
+                } else {
+                    input_str
+                };
+                debug!("TOOL_INPUT: {truncated}");
+            }
+        }
+
+        // Check for prompt-related keys and extract potential prompt text
+        for hint in PROMPT_HINTS {
+            if let Some(val) = obj.get(*hint)
+                && let Some(text) = val.as_str()
+            {
+                // Use char-safe truncation to avoid panic on multi-byte UTF-8
+                let char_count = text.chars().count();
+                let truncated = if char_count > 200 {
+                    let prefix: String = text.chars().take(200).collect();
+                    format!("{prefix}... [truncated, total {char_count} chars]")
+                } else {
+                    text.to_string()
+                };
+                debug!("PAYLOAD_PROMPT_FIELD: {hint} = \"{truncated}\"");
+            }
+        }
+
+        // Log session information if present
+        if let Some(session_id) = obj.get("session_id") {
+            debug!("SESSION_ID: {session_id}");
+        }
     }
 }
 
@@ -255,28 +342,39 @@ pub trait LLmProviderTrait {
 
         let mut line = String::new();
 
-        info!("Waiting for input");
+        debug!("Hook waiting for input on stdin");
 
         // that's a fatal error
         let len = reader
             .read_line(&mut line)
             .context("Unable to read from stdin")?;
 
+        debug!("Received {len} bytes from stdin");
+
         if 0 == len {
             // that's still successful, out input just got closed
-            warn!("EOF. We're leaving");
+            warn!("EOF received, exiting hook");
             return Ok(());
         }
 
-        let value = serde_json::from_str(&line).context("Unable to deserialize")?;
+        let value: Value = serde_json::from_str(&line).context("Unable to deserialize")?;
+
+        // Log the raw payload structure for debugging and format discovery
+        // This helps understand provider-specific payload formats
+        log_payload_structure(&value);
 
         let start = Instant::now();
 
         if self.is_tool_use(&value) {
-            //
+            debug!("Processing as TOOL_USE event");
+            debug!(
+                "Config: audit_tool_use={}, fail_open={}",
+                config.user.audit_tool_use, config.user.fail_open
+            );
+
             // D&R Path - only call cloud if audit_tool_use is enabled
-            //
             let answer = if config.user.audit_tool_use {
+                debug!("Sending tool_use to cloud for authorization");
                 self.authorize_tool(cloud, config, value)
             } else {
                 info!("audit_tool_use disabled, approving locally");
@@ -284,18 +382,24 @@ pub trait LLmProviderTrait {
             };
 
             info!("Decision={}", answer.decision);
+            debug!("Writing response to stdout");
             self.write_answer(&mut writer, answer)?;
         } else {
-            //
+            debug!("Processing as PROMPT_USE event (notification only)");
+            debug!("Config: audit_prompts={}", config.user.audit_prompts);
+
             // Notify path - only call cloud if audit_prompts is enabled
-            //
             if config.user.audit_prompts {
+                debug!("Sending prompt to cloud for audit logging");
+
                 // Check if this is a Stop/response completion event
                 // If so, enrich the payload with the actual response from the transcript
                 let enriched_value = self.enrich_stop_event(value);
 
                 if let Err(e) = cloud.notify(enriched_value) {
                     error!("Unable to notify cloud ({e})");
+                } else {
+                    debug!("Cloud notification sent successfully");
                 }
             } else {
                 info!("audit_prompts disabled, skipping cloud notification");
@@ -303,12 +407,13 @@ pub trait LLmProviderTrait {
 
             // Always write an approve response for non-tool-use events
             // The AI tool may be waiting for a response on stdout
+            debug!("Writing approve response to stdout (prompts always approved)");
             self.write_answer(&mut writer, HookAnswer::approve())?;
         }
 
         let duration = start.elapsed().as_millis();
 
-        info!("duration={duration}ms");
+        info!("Hook completed in {duration}ms");
 
         Ok(())
     }

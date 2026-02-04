@@ -2,7 +2,7 @@ use std::time::SystemTime;
 
 use anyhow::{Context, Result, bail};
 use derive_more::Display;
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
@@ -229,7 +229,9 @@ impl<'a> CloudQuery<'a> {
     }
 
     pub fn notify(&self, data: Value) -> Result<()> {
+        debug!("Preparing notification request to cloud");
         let session_id = mine_session_id(&data);
+        debug!("Session ID: {session_id:?}");
 
         let meta_data = CloudRequestMeta::new(
             self.config,
@@ -243,6 +245,12 @@ impl<'a> CloudQuery<'a> {
             auth: None,
         };
 
+        // Log the full request being sent to LimaCharlie
+        if let Ok(pretty) = serde_json::to_string_pretty(&req) {
+            debug!("CLOUD_REQUEST (notify):\n{pretty}");
+        }
+
+        debug!("Sending notification to: {}", self.url);
         let ret = minreq::post(&self.url)
             .with_timeout(CLOUD_API_TIMEOUT_SECS)
             .with_header("User-Agent", user_agent())
@@ -251,17 +259,23 @@ impl<'a> CloudQuery<'a> {
             .context("Failed to serialize notification request")?
             .send();
 
-        if let Err(e) = ret {
-            error!("Notification to {} failed: {e}", self.url);
+        match &ret {
+            Ok(response) => {
+                debug!("Notification response: status={}", response.status_code);
+                info!("Notification sent successfully");
+            }
+            Err(e) => {
+                error!("Notification to {} failed: {e}", self.url);
+            }
         }
-
-        info!("successfully sent the notification");
 
         Ok(())
     }
 
     pub fn authorize(&self, data: Value) -> Result<CloudVerdict> {
+        debug!("Preparing authorization request to cloud");
         let session_id = mine_session_id(&data);
+        debug!("Session ID: {session_id:?}");
 
         let meta_data = CloudRequestMeta::new(
             self.config,
@@ -276,6 +290,14 @@ impl<'a> CloudQuery<'a> {
             notify: None,
         };
 
+        // Log the full request being sent to LimaCharlie
+        if let Ok(pretty) = serde_json::to_string_pretty(&req) {
+            debug!("CLOUD_REQUEST (auth):\n{pretty}");
+        }
+
+        debug!("Sending authorization to: {}", self.url);
+        debug!("Timeout: {CLOUD_API_TIMEOUT_SECS}s");
+
         let res = minreq::post(&self.url)
             .with_timeout(CLOUD_API_TIMEOUT_SECS)
             .with_header("User-Agent", user_agent())
@@ -284,6 +306,8 @@ impl<'a> CloudQuery<'a> {
             .context("Failed to serialize authorization request")?
             .send()
             .with_context(|| format!("Failed to connect to hook server at {}", self.url))?;
+
+        debug!("Authorization response: status={}", res.status_code);
 
         if !(200..300).contains(&res.status_code) {
             let error_body = res.as_str().unwrap_or("Unknown error");
@@ -295,20 +319,19 @@ impl<'a> CloudQuery<'a> {
         }
 
         let data = res.as_str()?;
-
-        info!("cloud returned {data}");
+        debug!("Cloud response body: {data}");
 
         let data: CloudResponse = res
             .json()
             .context("Authorization server returned invalid JSON response")?;
 
-        info!("allow={} reason={:?}", data.success, data.reason);
+        info!("Authorization result: allow={} reason={:?}", data.success, data.reason);
 
         let verdict = if data.success {
             CloudVerdict::Allow
         } else {
             let msg = data.block_message();
-
+            debug!("Block message: {msg}");
             CloudVerdict::Deny(msg)
         };
 

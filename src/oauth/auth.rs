@@ -695,8 +695,7 @@ fn exchange_github_token_for_firebase(github_access_token: &str) -> Result<OAuth
     #[allow(clippy::cast_possible_wrap)]
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_secs() as i64);
     let expires_at = now.saturating_add(expires_in);
 
     info!("Firebase token exchange successful");
@@ -1072,8 +1071,7 @@ fn exchange_code_for_tokens(
     #[allow(clippy::cast_possible_wrap)]
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_secs() as i64);
     let expires_at = now.saturating_add(expires_in);
 
     Ok(ExchangeResult::Success(OAuthTokens {
@@ -1200,8 +1198,7 @@ fn finalize_mfa(
     #[allow(clippy::cast_possible_wrap)]
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_secs() as i64);
     let expires_at = now.saturating_add(expires_in);
 
     Ok(OAuthTokens {
