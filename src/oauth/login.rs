@@ -6,13 +6,13 @@ use log::info;
 
 use crate::{
     cloud::lc_api::{
-        DRRule, UserOrg, WebhookAdapter, create_installation_key, get_jwt_firebase, get_org_info,
+        UserOrg, WebhookAdapter, create_installation_key, get_jwt_firebase, get_org_info,
         get_org_urls, get_user_orgs, org_available, org_create, signup_user,
     },
     common::PROJECT_NAME,
     config::{Config, LcOrg},
     default::get_embedded_default,
-    oauth::{LoginArgs, OAuthProvider, authorize},
+    oauth::{LoginArgs, OAuthProvider, authorize, primer_rules::create_dr_rules},
     tui::{
         ValidationResult,
         components::{Select, SelectItem},
@@ -179,186 +179,6 @@ fn wait_for_org(oid: &str, token: &str) -> Result<String> {
             }
         }
     }
-}
-
-/// Creates D&R rules for the team.
-///
-/// This creates detection rules for security-relevant events like SSH key access,
-/// hook configuration tampering, and binary modifications.
-fn create_dr_rules(oid: &str, jwt: &str) -> Result<()> {
-    info!("Creating D&R rules for oid={oid}");
-
-    create_ssh_access_rule(oid, jwt)?;
-    create_hook_config_tamper_rule(oid, jwt)?;
-    create_binary_tamper_rule(oid, jwt)?;
-
-    info!("D&R rules created successfully");
-    Ok(())
-}
-
-/// Rule: Detect SSH key access
-fn create_ssh_access_rule(oid: &str, jwt: &str) -> Result<()> {
-    info!("Creating SSH key access detection rule");
-    let detect = serde_json::json!({
-        "op": "or",
-        "rules": [
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Read" },
-                    { "op": "contains", "path": "event/auth/tool_input/file_path", "value": ".ssh/" }
-                ]
-            },
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Bash" },
-                    { "op": "contains", "path": "event/auth/tool_input/command", "value": ".ssh/" }
-                ]
-            },
-            { "op": "contains", "path": "event/auth/cwd", "value": ".ssh/" }
-        ],
-        "target": "webhook"
-    });
-
-    let respond = vec![serde_json::json!({
-        "action": "report",
-        "name": "reading ssh keys"
-    })];
-
-    DRRule::builder()
-        .token(jwt)
-        .oid(oid)
-        .name("vr-ssh-key-access")
-        .detect(detect)
-        .respond(respond)
-        .build()
-        .create()
-        .context("Failed to create SSH key access D&R rule")
-}
-
-/// Rule: Detect hook configuration file modifications
-/// Monitors: Claude, Cursor, Gemini, Codex, `OpenCode`, `OpenClaw` config files
-fn create_hook_config_tamper_rule(oid: &str, jwt: &str) -> Result<()> {
-    info!("Creating hook config tampering detection rule");
-    // Hook config file patterns to monitor
-    // NOTE: Keep in sync with providers in src/providers/*.rs
-    let config_files = [
-        ".claude/settings.json",          // Claude Code
-        ".cursor/hooks.json",             // Cursor
-        ".gemini/settings.json",          // Gemini CLI
-        ".codex/config.toml",             // OpenAI Codex CLI
-        ".config/opencode/opencode.json", // OpenCode
-        ".openclaw/openclaw.json",        // OpenClaw
-    ];
-
-    // Build file path match rules for Write/Edit tools
-    let file_path_rules: Vec<_> = config_files
-        .iter()
-        .map(|f| {
-            serde_json::json!({
-                "op": "contains",
-                "path": "event/auth/tool_input/file_path",
-                "value": f
-            })
-        })
-        .collect();
-
-    // Build command match rules for Bash tool
-    let command_rules: Vec<_> = config_files
-        .iter()
-        .map(|f| {
-            serde_json::json!({
-                "op": "contains",
-                "path": "event/auth/tool_input/command",
-                "value": f
-            })
-        })
-        .collect();
-
-    let detect = serde_json::json!({
-        "op": "or",
-        "rules": [
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Write" },
-                    { "op": "or", "rules": file_path_rules }
-                ]
-            },
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Edit" },
-                    { "op": "or", "rules": file_path_rules }
-                ]
-            },
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Bash" },
-                    { "op": "or", "rules": command_rules }
-                ]
-            }
-        ],
-        "target": "webhook"
-    });
-
-    let respond = vec![serde_json::json!({
-        "action": "report",
-        "name": "hook config modification"
-    })];
-
-    DRRule::builder()
-        .token(jwt)
-        .oid(oid)
-        .name("vr-hook-config-tamper")
-        .detect(detect)
-        .respond(respond)
-        .build()
-        .create()
-        .context("Failed to create hook config tampering D&R rule")
-}
-
-/// Rule: Detect viberails binary modifications
-/// Monitors: ~/.local/bin/viberails
-fn create_binary_tamper_rule(oid: &str, jwt: &str) -> Result<()> {
-    info!("Creating viberails binary tampering detection rule");
-    let detect = serde_json::json!({
-        "op": "or",
-        "rules": [
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Write" },
-                    { "op": "contains", "path": "event/auth/tool_input/file_path", "value": ".local/bin/viberails" }
-                ]
-            },
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Bash" },
-                    { "op": "contains", "path": "event/auth/tool_input/command", "value": ".local/bin/viberails" }
-                ]
-            }
-        ],
-        "target": "webhook"
-    });
-
-    let respond = vec![serde_json::json!({
-        "action": "report",
-        "name": "viberails binary modification"
-    })];
-
-    DRRule::builder()
-        .token(jwt)
-        .oid(oid)
-        .name("vr-binary-tamper")
-        .detect(detect)
-        .respond(respond)
-        .build()
-        .create()
-        .context("Failed to create binary tampering D&R rule")
 }
 
 /// Creates a webhook adapter and returns the full webhook URL.

@@ -50,29 +50,24 @@ AI coding assistants like Claude Code, Cursor, and Copilot are transforming how 
 **macOS/Linux:**
 
 ```bash
-# Download and run
-curl -sSL https://get.viberails.io/install.sh | bash
-
-# Initialize your team (opens browser for OAuth)
-viberails init-team
+bash <(curl -fsSL https://get.viberails.io/install.sh)
 ```
 
 **Windows (PowerShell):**
 
 ```powershell
-# Download and run
 irm https://get.viberails.io/install.ps1 | iex
-
-# Initialize your team (opens browser for OAuth)
-viberails init-team
 ```
 
-You'll be prompted to select an OAuth provider (Google, Microsoft, or GitHub) and enter your team name. The browser will open for authentication.
+This downloads Viberails and launches the interactive setup. You'll be prompted to:
+1. Select an OAuth provider (Google, Microsoft, or GitHub)
+2. Enter your team name
+3. Complete authentication in your browser
 
-To use an existing LimaCharlie organization:
+To use an existing LimaCharlie organization, run:
 
 ```bash
-viberails init-team --existing-org
+viberails init-team --existing-org <OID>
 ```
 
 ### 2. Install Hooks
@@ -93,12 +88,18 @@ Viberails automatically detects which AI tools you have installed and lets you c
 
 ### 3. Add Your Team
 
-Share the team URL with your colleagues. They can join without OAuth:
+After setup, you'll receive a command to share with your colleagues. They can join with a single command:
+
+**macOS/Linux:**
 
 ```bash
-# On each team member's machine
-viberails join-team https://hooks.example.com/your-team-url
-viberails install
+bash <(curl -fsSL https://get.viberails.io/install.sh) join-team <YOUR_TEAM_URL>
+```
+
+**Windows (PowerShell):**
+
+```powershell
+$u="<YOUR_TEAM_URL>"; irm https://get.viberails.io/join.ps1 | iex
 ```
 
 That's it! Your team now has complete visibility into AI coding assistant activity.
@@ -111,41 +112,27 @@ That's it! Your team now has complete visibility into AI coding assistant activi
 viberails show-config
 ```
 
-### Privacy Controls
+This displays your current configuration including:
+- **Fail Open** - Whether tools are approved locally when cloud is unreachable (default: true)
+- **Audit Tool Use** - Send tool calls to cloud for authorization (default: true)
+- **Audit Prompts** - Send prompts/chat to cloud for audit logging (default: true)
+- **Organization** - Your team name and webhook URL
 
-Control what data is sent to your team's cloud:
-
-```bash
-# Keep prompts/chat local (only send tool authorizations)
-viberails configure --audit-prompts false
-
-# Approve all tools locally (no cloud authorization)
-viberails configure --audit-tool-use false
-
-# Re-enable full auditing
-viberails configure --audit-prompts true --audit-tool-use true
-```
-
-### Fail-Open Behavior
-
-By default, if the cloud is unreachable, tools are approved locally. To enforce strict mode:
-
-```bash
-viberails configure --fail-open false
-```
+Configuration can be modified by editing `~/.config/viberails/config.json`.
 
 ## Commands Reference
 
-| Command           | Description                         |
-| ----------------- | ----------------------------------- |
-| `init-team`       | Create a new team via OAuth         |
-| `join-team <URL>` | Join an existing team               |
-| `install`         | Install hooks for detected AI tools |
-| `uninstall`       | Remove hooks from AI tools          |
-| `list`            | Show installed hooks                |
-| `configure`       | Modify settings                     |
-| `show-config`     | Display current configuration       |
-| `upgrade`         | Update to the latest version        |
+| Command           | Alias   | Description                         |
+| ----------------- | ------- | ----------------------------------- |
+| `init-team`       | `init`  | Create a new team via OAuth         |
+| `join-team <URL>` | `join`  | Join an existing team               |
+| `install`         |         | Install hooks for detected AI tools |
+| `uninstall`       |         | Remove hooks and optionally the binary |
+| `list`            | `ls`    | Show installed hooks                |
+| `show-config`     |         | Display current configuration       |
+| `upgrade`         |         | Update to the latest version        |
+
+Run `viberails --help` for detailed usage information.
 
 ## Architecture
 
@@ -182,17 +169,15 @@ Viberails is powered by [LimaCharlie](https://limacharlie.io), a security infras
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Web Application (Coming Soon)
+## Web Dashboard
 
-We're building a web dashboard that will provide:
+Access your team's dashboard at [app.viberails.io](https://app.viberails.io):
 
 - **Real-time Activity Feed** - Watch AI tool usage across your team as it happens
 - **Policy Management** - Define rules for what tools can and cannot do
 - **Analytics & Reporting** - Understand AI tool usage patterns
 - **Alerts** - Get notified when sensitive operations occur
 - **Compliance Reports** - Generate audit reports with one click
-
-Stay tuned for updates!
 
 ## Building from Source
 
@@ -212,7 +197,14 @@ cargo build --release
 
 - Windows, macOS, or Linux
 - One or more supported AI coding tools installed
-- Internet connection for team features (or use local-only mode)
+- Internet connection for team features
+
+The binary is installed to `~/.local/bin/viberails`. If this directory isn't in your PATH, add it:
+
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+export PATH="$HOME/.local/bin:$PATH"
+```
 
 ## Contributing
 
@@ -230,6 +222,10 @@ These checks are enforced by pre-commit hooks.
 - **Issues**: [GitHub Issues](https://github.com/refractionPOINT/viberails/issues)
 - **Documentation**: [docs.viberails.io](https://docs.viberails.io) (coming soon)
 - **Community**: [Discord](https://discord.gg/viberails) (coming soon)
+
+## License
+
+Viberails is licensed under the [Apache License 2.0](LICENSE).
 
 ---
 
