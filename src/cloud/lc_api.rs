@@ -155,7 +155,11 @@ where
     S: AsRef<str>,
     K: AsRef<str>,
 {
-    let body = format!("oid={}&fb_auth={}", oid.as_ref(), fb_auth.as_ref());
+    let body = format!(
+        "oid={}&fb_auth={}",
+        urlencoding::encode(oid.as_ref()),
+        urlencoding::encode(fb_auth.as_ref())
+    );
 
     let res = minreq::post(LC_JWT_URL)
         .with_timeout(LC_API_TIMEOUT_SECS)
@@ -261,7 +265,10 @@ where
     T: AsRef<str>,
     S: AsRef<str>,
 {
-    let url = format!("{LC_API_URL}/orgs/new?name={}", name.as_ref());
+    let url = format!(
+        "{LC_API_URL}/orgs/new?name={}",
+        urlencoding::encode(name.as_ref())
+    );
     let bearer = format!("Bearer {}", token.as_ref());
 
     let res = minreq::get(&url)
@@ -483,7 +490,8 @@ impl WebhookAdapter<'_> {
     pub fn create(&self) -> Result<()> {
         let url = format!(
             "{LC_API_URL}/hive/cloud_sensor/{}/{}/data",
-            self.oid, self.name
+            urlencoding::encode(self.oid),
+            urlencoding::encode(self.name)
         );
 
         let bearer = format!("Bearer {}", self.token);
@@ -552,7 +560,8 @@ impl DRRule<'_> {
     pub fn create(&self) -> Result<()> {
         let url = format!(
             "{LC_API_URL}/hive/dr-general/{}/{}/data",
-            self.oid, self.name
+            urlencoding::encode(self.oid),
+            urlencoding::encode(self.name)
         );
 
         let bearer = format!("Bearer {}", self.token);
