@@ -148,12 +148,12 @@ def main() -> int:
         description="Test runner for viberails binary")
 
     parser.add_argument("--org-id",
-                        default=os.environ.get("OID"),
-                        help="Organization ID (or set OID env var)")
+                        default=os.environ.get("CICD_OID"),
+                        help="Organization ID (or set CICD_OID env var)")
 
     parser.add_argument("--secret-id",
-                        default=os.environ.get("SECRET_ID"),
-                        help="Secret ID (or set SECRET_ID env var)")
+                        default=os.environ.get("CICD_HOOK_SECRET"),
+                        help="Secret ID (or set CICD_HOOK_SECRET env var)")
 
     parser.add_argument("-b", "--bin",
                         type=Path,
