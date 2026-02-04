@@ -150,29 +150,23 @@ jobs:
                   fi
                   TIMESTAMP=$(date +%s)
 
-                  # Compute SHA256 checksums for all binaries
-                  declare -A CHECKSUMS
+                  # Build checksums JSON object using jq to prevent injection
+                  CHECKSUMS_JSON='{}'
                   for file in dist/viberails-*; do
                       filename=$(basename "$file")
                       checksum=$(sha256sum "$file" | cut -d' ' -f1)
-                      CHECKSUMS["$filename"]="$checksum"
+                      # Use jq with --arg to safely escape values
+                      CHECKSUMS_JSON=$(echo "$CHECKSUMS_JSON" | jq --arg k "$filename" --arg v "$checksum" '. + {($k): $v}')
                   done
 
-                  # Build checksums JSON object
-                  CHECKSUMS_JSON="{"
-                  first=true
-                  for key in "${!CHECKSUMS[@]}"; do
-                      if [ "$first" = true ]; then
-                          first=false
-                      else
-                          CHECKSUMS_JSON+=","
-                      fi
-                      CHECKSUMS_JSON+="\"$key\":\"${CHECKSUMS[$key]}\""
-                  done
-                  CHECKSUMS_JSON+="}"
-
-                  # Create release.json with version and checksums (pretty printed)
-                  echo "{\"version\": \"$VERSION\", \"timestamp\": $TIMESTAMP, \"commit\": \"$GITHUB_SHA\", \"checksums\": $CHECKSUMS_JSON}" | python3 -m json.tool > dist/release.json
+                  # Create release.json using jq for safe JSON construction
+                  jq -n \
+                      --arg version "$VERSION" \
+                      --arg timestamp "$TIMESTAMP" \
+                      --arg commit "$GITHUB_SHA" \
+                      --argjson checksums "$CHECKSUMS_JSON" \
+                      '{version: $version, timestamp: ($timestamp | tonumber), commit: $commit, checksums: $checksums}' \
+                      > dist/release.json
 
                   # Display release.json for verification
                   echo "Generated release.json:"
@@ -229,29 +223,23 @@ jobs:
                   TIMESTAMP=$(jq -r '.timestamp' dist/release.json)
                   COMMIT=$(jq -r '.commit' dist/release.json)
 
-                  # Recompute SHA256 checksums for all signed binaries
-                  declare -A CHECKSUMS
+                  # Build checksums JSON object using jq to prevent injection
+                  CHECKSUMS_JSON='{}'
                   for file in dist/viberails-*; do
                       filename=$(basename "$file")
                       checksum=$(sha256sum "$file" | cut -d' ' -f1)
-                      CHECKSUMS["$filename"]="$checksum"
+                      # Use jq with --arg to safely escape values
+                      CHECKSUMS_JSON=$(echo "$CHECKSUMS_JSON" | jq --arg k "$filename" --arg v "$checksum" '. + {($k): $v}')
                   done
 
-                  # Build checksums JSON object
-                  CHECKSUMS_JSON="{"
-                  first=true
-                  for key in "${!CHECKSUMS[@]}"; do
-                      if [ "$first" = true ]; then
-                          first=false
-                      else
-                          CHECKSUMS_JSON+=","
-                      fi
-                      CHECKSUMS_JSON+="\"$key\":\"${CHECKSUMS[$key]}\""
-                  done
-                  CHECKSUMS_JSON+="}"
-
-                  # Update release.json with new checksums (pretty printed)
-                  echo "{\"version\": \"$VERSION\", \"timestamp\": $TIMESTAMP, \"commit\": \"$COMMIT\", \"checksums\": $CHECKSUMS_JSON}" | python3 -m json.tool > dist/release.json
+                  # Update release.json using jq for safe JSON construction
+                  jq -n \
+                      --arg version "$VERSION" \
+                      --arg timestamp "$TIMESTAMP" \
+                      --arg commit "$COMMIT" \
+                      --argjson checksums "$CHECKSUMS_JSON" \
+                      '{version: $version, timestamp: ($timestamp | tonumber), commit: $commit, checksums: $checksums}' \
+                      > dist/release.json
 
                   # Display updated release.json for verification
                   echo "Updated release.json with post-signing checksums:"
