@@ -503,7 +503,7 @@ impl WebhookAdapter<'_> {
                     mapping: Mapping {
                         event_type_path: "meta_data/type",
                         sensor_key_path: "{{.meta_data.installation_id}}{{.meta_data.source}}",
-                        sensor_hostname_path: "{{.meta_data.hostname}} - {{.meta_data.source}}",
+                        sensor_hostname_path: "{{.meta_data.username}}@{{.meta_data.hostname}} - {{.meta_data.source}}",
                     },
                 },
                 dr_rules: DrRules { enabled: true },
