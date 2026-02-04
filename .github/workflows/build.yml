@@ -195,6 +195,34 @@ jobs:
                   name: viberails-dist
                   path: dist/
 
+    integration-test:
+        needs: dist
+        if: always() && needs.dist.result == 'success'
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: Download distribution artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  name: viberails-dist
+                  path: dist
+
+            - name: Make binary executable
+              run: chmod +x dist/viberails-linux-x64
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.x"
+
+            - name: Run integration tests
+              env:
+                  OID: ${{ secrets.OID }}
+                  SECRET_ID: ${{ secrets.SECRET_ID }}
+              run: python tests/mock_requests.py -b dist
+
     code-sign:
         needs: dist
         runs-on: ubuntu-latest
