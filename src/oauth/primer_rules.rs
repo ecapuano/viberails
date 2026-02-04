@@ -5,8 +5,121 @@
 
 use anyhow::{Context, Result};
 use log::info;
+use serde_json::Value;
 
 use crate::cloud::lc_api::DRRule;
+
+// === Helper functions for rule generation ===
+
+/// Generate Claude Code file path contains rules
+fn cc_file_path_rules(paths: &[&str]) -> Vec<Value> {
+    paths
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "op": "contains",
+                "path": "event/auth/tool_input/file_path",
+                "value": p
+            })
+        })
+        .collect()
+}
+
+/// Generate Claude Code command contains rules
+fn cc_command_rules(patterns: &[&str]) -> Vec<Value> {
+    patterns
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "op": "contains",
+                "path": "event/auth/tool_input/command",
+                "value": p
+            })
+        })
+        .collect()
+}
+
+/// Generate `OpenClaw` file path contains rules
+fn oc_file_path_rules(paths: &[&str]) -> Vec<Value> {
+    paths
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "op": "contains",
+                "path": "event/auth/params/path",
+                "value": p
+            })
+        })
+        .collect()
+}
+
+/// Generate `OpenClaw` command contains rules
+fn oc_command_rules(patterns: &[&str]) -> Vec<Value> {
+    patterns
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "op": "contains",
+                "path": "event/auth/params/command",
+                "value": p
+            })
+        })
+        .collect()
+}
+
+/// Generate a Claude Code tool detection rule (`tool_name` + condition)
+#[allow(clippy::needless_pass_by_value)]
+fn cc_tool_rule(tool: &str, condition_rules: Vec<Value>) -> Value {
+    serde_json::json!({
+        "op": "and",
+        "rules": [
+            { "op": "is", "path": "event/auth/tool_name", "value": tool },
+            { "op": "or", "rules": condition_rules }
+        ]
+    })
+}
+
+/// Generate an `OpenClaw` tool detection rule (`toolName` + condition)
+#[allow(clippy::needless_pass_by_value)]
+fn oc_tool_rule(tool: &str, condition_rules: Vec<Value>) -> Value {
+    serde_json::json!({
+        "op": "and",
+        "rules": [
+            { "op": "is", "path": "event/auth/toolName", "value": tool },
+            { "op": "or", "rules": condition_rules }
+        ]
+    })
+}
+
+/// Generate Claude Code file extension regex rules (for Write tool)
+fn cc_file_extension_rules(extensions: &[&str]) -> Vec<Value> {
+    extensions
+        .iter()
+        .map(|ext| {
+            let escaped_ext = ext.replace('.', r"\.");
+            serde_json::json!({
+                "op": "matches",
+                "path": "event/auth/tool_input/file_path",
+                "re": format!(r"{}$", escaped_ext)
+            })
+        })
+        .collect()
+}
+
+/// Generate `OpenClaw` file extension regex rules (for write tool)
+fn oc_file_extension_rules(extensions: &[&str]) -> Vec<Value> {
+    extensions
+        .iter()
+        .map(|ext| {
+            let escaped_ext = ext.replace('.', r"\.");
+            serde_json::json!({
+                "op": "matches",
+                "path": "event/auth/params/path",
+                "re": format!(r"{}$", escaped_ext)
+            })
+        })
+        .collect()
+}
 
 /// Creates all D&R rules for the team.
 ///
@@ -62,6 +175,7 @@ fn create_ssh_access_rule(oid: &str, jwt: &str) -> Result<()> {
     let detect = serde_json::json!({
         "op": "or",
         "rules": [
+            // === Claude Code detection ===
             {
                 "op": "and",
                 "rules": [
@@ -76,7 +190,22 @@ fn create_ssh_access_rule(oid: &str, jwt: &str) -> Result<()> {
                     { "op": "contains", "path": "event/auth/tool_input/command", "value": ".ssh" }
                 ]
             },
-            { "op": "contains", "path": "event/auth/cwd", "value": ".ssh" }
+            { "op": "contains", "path": "event/auth/cwd", "value": ".ssh" },
+            // === OpenClaw detection ===
+            {
+                "op": "and",
+                "rules": [
+                    { "op": "is", "path": "event/auth/toolName", "value": "read" },
+                    { "op": "contains", "path": "event/auth/params/path", "value": ".ssh" }
+                ]
+            },
+            {
+                "op": "and",
+                "rules": [
+                    { "op": "is", "path": "event/auth/toolName", "value": "exec" },
+                    { "op": "contains", "path": "event/auth/params/command", "value": ".ssh" }
+                ]
+            }
         ],
         "target": "webhook"
     });
@@ -112,54 +241,16 @@ fn create_hook_config_tamper_rule(oid: &str, jwt: &str) -> Result<()> {
         ".openclaw/openclaw.json",        // OpenClaw
     ];
 
-    // Build file path match rules for Write/Edit tools
-    let file_path_rules: Vec<_> = config_files
-        .iter()
-        .map(|f| {
-            serde_json::json!({
-                "op": "contains",
-                "path": "event/auth/tool_input/file_path",
-                "value": f
-            })
-        })
-        .collect();
-
-    // Build command match rules for Bash tool
-    let command_rules: Vec<_> = config_files
-        .iter()
-        .map(|f| {
-            serde_json::json!({
-                "op": "contains",
-                "path": "event/auth/tool_input/command",
-                "value": f
-            })
-        })
-        .collect();
-
     let detect = serde_json::json!({
         "op": "or",
         "rules": [
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Write" },
-                    { "op": "or", "rules": file_path_rules }
-                ]
-            },
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Edit" },
-                    { "op": "or", "rules": file_path_rules }
-                ]
-            },
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Bash" },
-                    { "op": "or", "rules": command_rules }
-                ]
-            }
+            // Claude Code: Write/Edit/Bash
+            cc_tool_rule("Write", cc_file_path_rules(&config_files)),
+            cc_tool_rule("Edit", cc_file_path_rules(&config_files)),
+            cc_tool_rule("Bash", cc_command_rules(&config_files)),
+            // OpenClaw: write/exec
+            oc_tool_rule("write", oc_file_path_rules(&config_files)),
+            oc_tool_rule("exec", oc_command_rules(&config_files)),
         ],
         "target": "webhook"
     });
@@ -187,6 +278,7 @@ fn create_binary_tamper_rule(oid: &str, jwt: &str) -> Result<()> {
     let detect = serde_json::json!({
         "op": "or",
         "rules": [
+            // === Claude Code detection ===
             {
                 "op": "and",
                 "rules": [
@@ -199,6 +291,21 @@ fn create_binary_tamper_rule(oid: &str, jwt: &str) -> Result<()> {
                 "rules": [
                     { "op": "is", "path": "event/auth/tool_name", "value": "Bash" },
                     { "op": "contains", "path": "event/auth/tool_input/command", "value": ".local/bin/viberails" }
+                ]
+            },
+            // === OpenClaw detection ===
+            {
+                "op": "and",
+                "rules": [
+                    { "op": "is", "path": "event/auth/toolName", "value": "write" },
+                    { "op": "contains", "path": "event/auth/params/path", "value": ".local/bin/viberails" }
+                ]
+            },
+            {
+                "op": "and",
+                "rules": [
+                    { "op": "is", "path": "event/auth/toolName", "value": "exec" },
+                    { "op": "contains", "path": "event/auth/params/command", "value": ".local/bin/viberails" }
                 ]
             }
         ],
@@ -262,52 +369,16 @@ fn create_persistence_modification_rule(oid: &str, jwt: &str) -> Result<()> {
         "Register-ScheduledTask",
     ];
 
-    let file_path_rules: Vec<_> = persistence_paths
-        .iter()
-        .map(|p| {
-            serde_json::json!({
-                "op": "contains",
-                "path": "event/auth/tool_input/file_path",
-                "value": p
-            })
-        })
-        .collect();
-
-    let command_rules: Vec<_> = persistence_commands
-        .iter()
-        .map(|p| {
-            serde_json::json!({
-                "op": "contains",
-                "path": "event/auth/tool_input/command",
-                "value": p
-            })
-        })
-        .collect();
-
     let detect = serde_json::json!({
         "op": "or",
         "rules": [
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Write" },
-                    { "op": "or", "rules": file_path_rules }
-                ]
-            },
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Edit" },
-                    { "op": "or", "rules": file_path_rules }
-                ]
-            },
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Bash" },
-                    { "op": "or", "rules": command_rules }
-                ]
-            }
+            // Claude Code: Write/Edit/Bash
+            cc_tool_rule("Write", cc_file_path_rules(&persistence_paths)),
+            cc_tool_rule("Edit", cc_file_path_rules(&persistence_paths)),
+            cc_tool_rule("Bash", cc_command_rules(&persistence_commands)),
+            // OpenClaw: write/exec
+            oc_tool_rule("write", oc_file_path_rules(&persistence_paths)),
+            oc_tool_rule("exec", oc_command_rules(&persistence_commands)),
         ],
         "target": "webhook"
     });
@@ -350,59 +421,29 @@ fn create_cloud_creds_access_rule(oid: &str, jwt: &str) -> Result<()> {
         "terraform.tfstate",
     ];
 
-    let cred_env_vars = [
+    // Command patterns include cred paths + env vars
+    let cred_cmd_patterns = [
+        ".aws/credentials",
+        ".aws/config",
+        ".config/gcloud",
+        "application_default_credentials.json",
+        ".azure",
+        ".kube/config",
+        ".docker/config.json",
+        "terraform.tfstate",
         "AWS_ACCESS_KEY_ID",
         "AWS_SECRET_ACCESS_KEY",
     ];
 
-    let file_path_rules: Vec<_> = cred_paths
-        .iter()
-        .map(|p| {
-            serde_json::json!({
-                "op": "contains",
-                "path": "event/auth/tool_input/file_path",
-                "value": p
-            })
-        })
-        .collect();
-
-    let mut command_rules: Vec<_> = cred_paths
-        .iter()
-        .map(|p| {
-            serde_json::json!({
-                "op": "contains",
-                "path": "event/auth/tool_input/command",
-                "value": p
-            })
-        })
-        .collect();
-
-    // Add env var patterns to command rules
-    for var in &cred_env_vars {
-        command_rules.push(serde_json::json!({
-            "op": "contains",
-            "path": "event/auth/tool_input/command",
-            "value": var
-        }));
-    }
-
     let detect = serde_json::json!({
         "op": "or",
         "rules": [
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Read" },
-                    { "op": "or", "rules": file_path_rules }
-                ]
-            },
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Bash" },
-                    { "op": "or", "rules": command_rules }
-                ]
-            }
+            // Claude Code: Read/Bash
+            cc_tool_rule("Read", cc_file_path_rules(&cred_paths)),
+            cc_tool_rule("Bash", cc_command_rules(&cred_cmd_patterns)),
+            // OpenClaw: read/exec
+            oc_tool_rule("read", oc_file_path_rules(&cred_paths)),
+            oc_tool_rule("exec", oc_command_rules(&cred_cmd_patterns)),
         ],
         "target": "webhook"
     });
@@ -448,6 +489,7 @@ fn create_email_sending_rule(oid: &str, jwt: &str) -> Result<()> {
         "api.mailgun.net",
     ];
 
+    // Claude Code command rules
     let command_rules: Vec<_> = email_patterns
         .iter()
         .map(|p| {
@@ -459,11 +501,37 @@ fn create_email_sending_rule(oid: &str, jwt: &str) -> Result<()> {
         })
         .collect();
 
+    // OpenClaw command rules
+    let oc_command_rules: Vec<_> = email_patterns
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "op": "contains",
+                "path": "event/auth/params/command",
+                "value": p
+            })
+        })
+        .collect();
+
     let detect = serde_json::json!({
-        "op": "and",
+        "op": "or",
         "rules": [
-            { "op": "is", "path": "event/auth/tool_name", "value": "Bash" },
-            { "op": "or", "rules": command_rules }
+            // === Claude Code detection ===
+            {
+                "op": "and",
+                "rules": [
+                    { "op": "is", "path": "event/auth/tool_name", "value": "Bash" },
+                    { "op": "or", "rules": command_rules }
+                ]
+            },
+            // === OpenClaw detection ===
+            {
+                "op": "and",
+                "rules": [
+                    { "op": "is", "path": "event/auth/toolName", "value": "exec" },
+                    { "op": "or", "rules": oc_command_rules }
+                ]
+            }
         ],
         "target": "webhook"
     });
@@ -510,59 +578,33 @@ fn create_macos_sensitive_data_rule(oid: &str, jwt: &str) -> Result<()> {
         "Library/Messages/chat.db",
     ];
 
-    let security_commands = [
+    // Command patterns include sensitive paths + security commands
+    let cmd_patterns = [
+        "Library/Keychains",
+        "login.keychain",
+        "Application Support/Google/Chrome/Default/Cookies",
+        "Application Support/Google/Chrome/Default/Login Data",
+        "Library/Safari/Cookies",
+        "Cookies.binarycookies",
+        "cookies.sqlite",
+        "logins.json",
+        "key4.db",
+        "apple.Notes",
+        "NoteStore.sqlite",
+        "Library/Messages/chat.db",
         "security find-",
         "security dump-keychain",
     ];
 
-    let file_path_rules: Vec<_> = sensitive_paths
-        .iter()
-        .map(|p| {
-            serde_json::json!({
-                "op": "contains",
-                "path": "event/auth/tool_input/file_path",
-                "value": p
-            })
-        })
-        .collect();
-
-    let mut command_rules: Vec<_> = sensitive_paths
-        .iter()
-        .map(|p| {
-            serde_json::json!({
-                "op": "contains",
-                "path": "event/auth/tool_input/command",
-                "value": p
-            })
-        })
-        .collect();
-
-    // Add security command patterns
-    for cmd in &security_commands {
-        command_rules.push(serde_json::json!({
-            "op": "contains",
-            "path": "event/auth/tool_input/command",
-            "value": cmd
-        }));
-    }
-
     let detect = serde_json::json!({
         "op": "or",
         "rules": [
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Read" },
-                    { "op": "or", "rules": file_path_rules }
-                ]
-            },
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Bash" },
-                    { "op": "or", "rules": command_rules }
-                ]
-            }
+            // Claude Code: Read/Bash
+            cc_tool_rule("Read", cc_file_path_rules(&sensitive_paths)),
+            cc_tool_rule("Bash", cc_command_rules(&cmd_patterns)),
+            // OpenClaw: read/exec
+            oc_tool_rule("read", oc_file_path_rules(&sensitive_paths)),
+            oc_tool_rule("exec", oc_command_rules(&cmd_patterns)),
         ],
         "target": "webhook"
     });
@@ -608,6 +650,7 @@ fn create_destructive_delete_rule(oid: &str, jwt: &str) -> Result<()> {
         "wipefs",
     ];
 
+    // Claude Code command rules
     let command_rules: Vec<_> = destructive_patterns
         .iter()
         .map(|p| {
@@ -619,11 +662,37 @@ fn create_destructive_delete_rule(oid: &str, jwt: &str) -> Result<()> {
         })
         .collect();
 
+    // OpenClaw command rules
+    let oc_command_rules: Vec<_> = destructive_patterns
+        .iter()
+        .map(|p| {
+            serde_json::json!({
+                "op": "contains",
+                "path": "event/auth/params/command",
+                "value": p
+            })
+        })
+        .collect();
+
     let detect = serde_json::json!({
-        "op": "and",
+        "op": "or",
         "rules": [
-            { "op": "is", "path": "event/auth/tool_name", "value": "Bash" },
-            { "op": "or", "rules": command_rules }
+            // === Claude Code detection ===
+            {
+                "op": "and",
+                "rules": [
+                    { "op": "is", "path": "event/auth/tool_name", "value": "Bash" },
+                    { "op": "or", "rules": command_rules }
+                ]
+            },
+            // === OpenClaw detection ===
+            {
+                "op": "and",
+                "rules": [
+                    { "op": "is", "path": "event/auth/toolName", "value": "exec" },
+                    { "op": "or", "rules": oc_command_rules }
+                ]
+            }
         ],
         "target": "webhook"
     });
@@ -654,6 +723,7 @@ fn create_suspicious_tlds_rule(oid: &str, jwt: &str) -> Result<()> {
         ".cc", ".ws", ".gq", ".work", ".click", ".link", ".monster", ".icu", ".buzz",
     ];
 
+    // Claude Code URL rules for WebFetch
     let url_rules: Vec<_> = suspicious_tlds
         .iter()
         .map(|tld| {
@@ -667,6 +737,7 @@ fn create_suspicious_tlds_rule(oid: &str, jwt: &str) -> Result<()> {
         })
         .collect();
 
+    // Claude Code command rules for Bash
     let command_rules: Vec<_> = suspicious_tlds
         .iter()
         .map(|tld| {
@@ -679,9 +750,36 @@ fn create_suspicious_tlds_rule(oid: &str, jwt: &str) -> Result<()> {
         })
         .collect();
 
+    // OpenClaw query rules for web_search (query may contain URLs)
+    let oc_query_rules: Vec<_> = suspicious_tlds
+        .iter()
+        .map(|tld| {
+            let escaped_tld = tld.replace('.', r"\.");
+            serde_json::json!({
+                "op": "matches",
+                "path": "event/auth/params/query",
+                "re": format!(r"https?://[^\s]*{}", escaped_tld)
+            })
+        })
+        .collect();
+
+    // OpenClaw command rules for exec
+    let oc_command_rules: Vec<_> = suspicious_tlds
+        .iter()
+        .map(|tld| {
+            let escaped_tld = tld.replace('.', r"\.");
+            serde_json::json!({
+                "op": "matches",
+                "path": "event/auth/params/command",
+                "re": format!(r"(curl|wget).*https?://[^\s]*{}", escaped_tld)
+            })
+        })
+        .collect();
+
     let detect = serde_json::json!({
         "op": "or",
         "rules": [
+            // === Claude Code detection ===
             {
                 "op": "and",
                 "rules": [
@@ -694,6 +792,21 @@ fn create_suspicious_tlds_rule(oid: &str, jwt: &str) -> Result<()> {
                 "rules": [
                     { "op": "is", "path": "event/auth/tool_name", "value": "Bash" },
                     { "op": "or", "rules": command_rules }
+                ]
+            },
+            // === OpenClaw detection ===
+            {
+                "op": "and",
+                "rules": [
+                    { "op": "is", "path": "event/auth/toolName", "value": "web_search" },
+                    { "op": "or", "rules": oc_query_rules }
+                ]
+            },
+            {
+                "op": "and",
+                "rules": [
+                    { "op": "is", "path": "event/auth/toolName", "value": "exec" },
+                    { "op": "or", "rules": oc_command_rules }
                 ]
             }
         ],
@@ -743,54 +856,17 @@ fn create_file_encryption_rule(oid: &str, jwt: &str) -> Result<()> {
         "ConvertTo-SecureString",
     ];
 
-    let encrypted_extensions = [
-        ".encrypted",
-        ".locked",
-        ".crypted",
-        ".enc",
-    ];
-
-    let command_rules: Vec<_> = encryption_commands
-        .iter()
-        .map(|p| {
-            serde_json::json!({
-                "op": "contains",
-                "path": "event/auth/tool_input/command",
-                "value": p
-            })
-        })
-        .collect();
-
-    let file_extension_rules: Vec<_> = encrypted_extensions
-        .iter()
-        .map(|ext| {
-            // Escape the dot for regex (e.g., ".encrypted" -> r"\.encrypted$")
-            let escaped_ext = ext.replace('.', r"\.");
-            serde_json::json!({
-                "op": "matches",
-                "path": "event/auth/tool_input/file_path",
-                "re": format!(r"{}$", escaped_ext)
-            })
-        })
-        .collect();
+    let encrypted_extensions = [".encrypted", ".locked", ".crypted", ".enc"];
 
     let detect = serde_json::json!({
         "op": "or",
         "rules": [
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Bash" },
-                    { "op": "or", "rules": command_rules }
-                ]
-            },
-            {
-                "op": "and",
-                "rules": [
-                    { "op": "is", "path": "event/auth/tool_name", "value": "Write" },
-                    { "op": "or", "rules": file_extension_rules }
-                ]
-            }
+            // Claude Code: Bash/Write
+            cc_tool_rule("Bash", cc_command_rules(&encryption_commands)),
+            cc_tool_rule("Write", cc_file_extension_rules(&encrypted_extensions)),
+            // OpenClaw: exec/write
+            oc_tool_rule("exec", oc_command_rules(&encryption_commands)),
+            oc_tool_rule("write", oc_file_extension_rules(&encrypted_extensions)),
         ],
         "target": "webhook"
     });
