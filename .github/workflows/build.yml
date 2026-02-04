@@ -19,6 +19,11 @@ on:
                 default: false
                 type: boolean
 
+# Restrict permissions to minimum required for this workflow.
+# All jobs only need read access to checkout the repository.
+permissions:
+    contents: read
+
 env:
     CARGO_TERM_COLOR: always
 
