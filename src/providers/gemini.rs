@@ -10,8 +10,8 @@ use crate::providers::discovery::{DiscoveryResult, ProviderDiscovery, ProviderFa
 use crate::providers::{HookEntry, LLmProviderTrait};
 
 /// Supported hooks for Gemini CLI
-/// Based on <https://github.com/google-gemini/gemini-cli>
-pub const GEMINI_HOOKS: &[&str] = &["BeforeTool", "SessionStart"];
+/// Based on <https://geminicli.com/docs/hooks/reference/>
+pub const GEMINI_HOOKS: &[&str] = &["BeforeTool", "SessionStart", "AfterAgent"];
 
 /// Discovery implementation for Gemini CLI.
 pub struct GeminiDiscovery;

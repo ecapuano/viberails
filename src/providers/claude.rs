@@ -14,7 +14,7 @@ use crate::providers::discovery::{DiscoveryResult, ProviderDiscovery, ProviderFa
 use crate::providers::{HookEntry, LLmProviderTrait};
 
 /// Supported hooks for Claude Code
-pub const CLAUDE_HOOKS: &[&str] = &["PreToolUse", "UserPromptSubmit"];
+pub const CLAUDE_HOOKS: &[&str] = &["PreToolUse", "UserPromptSubmit", "Stop"];
 
 /// Discovery implementation for Claude Code.
 /// This struct handles checking whether Claude Code is installed

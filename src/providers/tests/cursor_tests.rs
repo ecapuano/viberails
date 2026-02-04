@@ -214,4 +214,5 @@ fn test_cursor_discovery_supported_hooks() {
     let hooks = discovery.supported_hooks();
     assert!(hooks.contains(&"preToolUse"));
     assert!(hooks.contains(&"beforeSubmitPrompt"));
+    assert!(hooks.contains(&"afterAgentResponse"));
 }

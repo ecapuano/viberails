@@ -374,33 +374,52 @@ fn print_success_message(org_name: &str, oid: &str, webhook_url: &str) {
     let join_command_windows = join_curl_windows.replace("{URL}", webhook_url);
     let team_url = format!("https://app.viberails.io/viberails/teams/{oid}");
 
+    // Calculate box width based on content
+    // "  Team: " or "  View: " prefix is 8 chars, plus content, plus 2 for padding
+    let team_line_len = 10_usize.saturating_add(org_name.len());
+    let view_line_len = 10_usize.saturating_add(team_url.len());
+    let box_width = team_line_len.max(view_line_len).max(60);
+
+    // Pre-calculate padding for each line
+    let team_padding = box_width.saturating_sub(10).saturating_sub(org_name.len());
+    let view_padding = box_width.saturating_sub(10).saturating_sub(team_url.len());
+    let inner_width = box_width.saturating_sub(2);
+
     println!();
-    println!("  {}", "═".repeat(60).as_str().dimmed());
+    println!("  {}", "═".repeat(box_width).as_str().dimmed());
     println!();
     println!("  {} Setup complete!", "✓".green().bold());
     println!();
     println!(
-        "  {}",
-        "┌────────────────────────────────────────────────────────┐".yellow()
+        "  {}{}{}",
+        "┌".yellow(),
+        "─".repeat(inner_width).as_str().yellow(),
+        "┐".yellow()
     );
     println!(
-        "  {}  {}: {}",
+        "  {}  {}: {}{}{}",
         "│".yellow(),
         "Team".white().bold(),
-        org_name.cyan().bold()
+        org_name.cyan().bold(),
+        " ".repeat(team_padding),
+        "│".yellow()
     );
     println!(
-        "  {}  {}: {}",
+        "  {}  {}: {}{}{}",
         "│".yellow(),
         "View".white().bold(),
-        team_url.yellow().bold().underline()
+        team_url.yellow().bold().underline(),
+        " ".repeat(view_padding),
+        "│".yellow()
     );
     println!(
-        "  {}",
-        "└────────────────────────────────────────────────────────┘".yellow()
+        "  {}{}{}",
+        "└".yellow(),
+        "─".repeat(inner_width).as_str().yellow(),
+        "┘".yellow()
     );
     println!();
-    println!("  {}", "─".repeat(60).as_str().dimmed());
+    println!("  {}", "─".repeat(box_width).as_str().dimmed());
     println!();
     println!("  {} Add other machines to this team:", "→".blue());
     println!();
@@ -410,7 +429,7 @@ fn print_success_message(org_name: &str, oid: &str, webhook_url: &str) {
     println!("  {}", "Windows (PowerShell):".dimmed());
     println!("    {}", join_command_windows.cyan());
     println!();
-    println!("  {}", "─".repeat(60).as_str().dimmed());
+    println!("  {}", "─".repeat(box_width).as_str().dimmed());
     println!();
     println!(
         "  Powered by {} {}",
@@ -441,7 +460,7 @@ fn print_success_message(org_name: &str, oid: &str, webhook_url: &str) {
         "retained for 1 year unless you destroy the Organization.".dimmed()
     );
     println!();
-    println!("  {}", "═".repeat(60).as_str().dimmed());
+    println!("  {}", "═".repeat(box_width).as_str().dimmed());
     println!();
 }
 

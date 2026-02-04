@@ -11,7 +11,7 @@ use crate::providers::{HookEntry, LLmProviderTrait};
 
 /// Supported hooks for Cursor
 /// Based on <https://cursor.com/docs/agent/hooks>
-pub const CURSOR_HOOKS: &[&str] = &["preToolUse", "beforeSubmitPrompt"];
+pub const CURSOR_HOOKS: &[&str] = &["preToolUse", "beforeSubmitPrompt", "afterAgentResponse"];
 
 /// Discovery implementation for Cursor.
 pub struct CursorDiscovery;

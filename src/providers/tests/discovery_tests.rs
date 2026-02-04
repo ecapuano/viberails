@@ -192,6 +192,7 @@ fn test_claude_discovery_supported_hooks() {
 
     assert!(hooks.contains(&"PreToolUse"));
     assert!(hooks.contains(&"UserPromptSubmit"));
+    assert!(hooks.contains(&"Stop"));
 }
 
 #[test]

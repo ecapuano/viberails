@@ -11,6 +11,9 @@ use crate::providers::{HookEntry, LLmProviderTrait};
 
 /// `OpenCode` uses a plugin system for hooks
 /// Plugins intercept tool execution and events
+/// Based on <https://opencode.ai/docs/plugins/>
+/// Note: `OpenCode` plugins are JS modules that subscribe to events internally.
+/// The plugin callback code handles events like `session.idle` - we only register the plugin once.
 pub const OPENCODE_HOOKS: &[&str] = &["plugins"];
 
 /// Discovery implementation for `OpenCode`.

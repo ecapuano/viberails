@@ -250,4 +250,5 @@ fn test_gemini_discovery_supported_hooks() {
     let hooks = discovery.supported_hooks();
     assert!(hooks.contains(&"BeforeTool"));
     assert!(hooks.contains(&"SessionStart"));
+    assert!(hooks.contains(&"AfterAgent"));
 }
