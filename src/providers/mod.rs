@@ -198,6 +198,7 @@ pub trait LLmProviderTrait {
     /// Check if this is a Stop/response completion event and enrich it with the response.
     /// For Stop events, Claude Code only provides metadata (`transcript_path`, `session_id`, etc.)
     /// but not the actual response. This method reads the transcript and adds the response.
+    /// Other platforms (Cursor, Gemini) may already include the response in the payload.
     fn enrich_stop_event(&self, value: Value) -> Value {
         let mut value = value;
         // Check if this is a stop event by looking at hook_event_name
@@ -212,9 +213,16 @@ pub trait LLmProviderTrait {
 
         info!("Detected stop event: {hook_event}");
 
-        // Get the transcript path
+        // Check if response is already in the payload (some platforms include it directly)
+        if value.get("assistant_response").is_some() {
+            info!("Response already present in payload");
+            return value;
+        }
+
+        // Try to get the transcript path - not all platforms provide it
         let Some(transcript_path) = value.get("transcript_path").and_then(|v| v.as_str()) else {
-            warn!("Stop event missing transcript_path");
+            // No transcript path and no response - nothing we can do, but this is expected
+            // for platforms like Cursor/Gemini that may handle responses differently
             return value;
         };
 
@@ -230,8 +238,6 @@ pub trait LLmProviderTrait {
             if let Some(obj) = value.as_object_mut() {
                 obj.insert("assistant_response".to_string(), Value::String(response));
             }
-        } else {
-            warn!("Could not extract response from transcript: {transcript_path}");
         }
 
         value
