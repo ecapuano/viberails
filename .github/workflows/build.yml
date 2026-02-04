@@ -19,6 +19,18 @@ on:
                 default: false
                 type: boolean
 
+# Restrict permissions to minimum required for this workflow.
+# All jobs only need read access to checkout the repository.
+permissions:
+    contents: read
+
+# Prevent concurrent runs for the same branch/tag to avoid race conditions.
+# For PRs and branches, cancel in-progress runs when new commits are pushed.
+# For tags (releases), allow the run to complete to avoid partial releases.
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
 env:
     CARGO_TERM_COLOR: always
 
@@ -35,7 +47,10 @@ jobs:
             - uses: actions/checkout@v4
 
             - name: Install Rust toolchain
-              uses: dtolnay/rust-toolchain@stable
+              # Pin non-official action to SHA for supply chain security
+              uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561 # stable
+              with:
+                  toolchain: stable
 
             - name: Run tests
               run: cargo test --all-features
@@ -71,8 +86,10 @@ jobs:
             - uses: actions/checkout@v4
 
             - name: Install Rust toolchain
-              uses: dtolnay/rust-toolchain@stable
+              # Pin non-official action to SHA for supply chain security
+              uses: dtolnay/rust-toolchain@f7ccc83f9ed1e5b9c81d8a67d7ad1a747e22a561 # stable
               with:
+                  toolchain: stable
                   targets: ${{ matrix.target }}
 
             - name: Install musl tools (Linux x64)
@@ -150,29 +167,23 @@ jobs:
                   fi
                   TIMESTAMP=$(date +%s)
 
-                  # Compute SHA256 checksums for all binaries
-                  declare -A CHECKSUMS
+                  # Build checksums JSON object using jq to prevent injection
+                  CHECKSUMS_JSON='{}'
                   for file in dist/viberails-*; do
                       filename=$(basename "$file")
                       checksum=$(sha256sum "$file" | cut -d' ' -f1)
-                      CHECKSUMS["$filename"]="$checksum"
+                      # Use jq with --arg to safely escape values
+                      CHECKSUMS_JSON=$(echo "$CHECKSUMS_JSON" | jq --arg k "$filename" --arg v "$checksum" '. + {($k): $v}')
                   done
 
-                  # Build checksums JSON object
-                  CHECKSUMS_JSON="{"
-                  first=true
-                  for key in "${!CHECKSUMS[@]}"; do
-                      if [ "$first" = true ]; then
-                          first=false
-                      else
-                          CHECKSUMS_JSON+=","
-                      fi
-                      CHECKSUMS_JSON+="\"$key\":\"${CHECKSUMS[$key]}\""
-                  done
-                  CHECKSUMS_JSON+="}"
-
-                  # Create release.json with version and checksums (pretty printed)
-                  echo "{\"version\": \"$VERSION\", \"timestamp\": $TIMESTAMP, \"commit\": \"$GITHUB_SHA\", \"checksums\": $CHECKSUMS_JSON}" | python3 -m json.tool > dist/release.json
+                  # Create release.json using jq for safe JSON construction
+                  jq -n \
+                      --arg version "$VERSION" \
+                      --arg timestamp "$TIMESTAMP" \
+                      --arg commit "$GITHUB_SHA" \
+                      --argjson checksums "$CHECKSUMS_JSON" \
+                      '{version: $version, timestamp: ($timestamp | tonumber), commit: $commit, checksums: $checksums}' \
+                      > dist/release.json
 
                   # Display release.json for verification
                   echo "Generated release.json:"
@@ -187,6 +198,9 @@ jobs:
     code-sign:
         needs: dist
         runs-on: ubuntu-latest
+        # Use 'release' environment for manual approval gate before accessing signing secrets.
+        # Configure this environment in repo Settings -> Environments with required reviewers.
+        environment: release
         if: always() && needs.dist.result == 'success' && (startsWith(github.ref, 'refs/tags/') || inputs.code_signing == true)
 
         steps:
@@ -229,29 +243,23 @@ jobs:
                   TIMESTAMP=$(jq -r '.timestamp' dist/release.json)
                   COMMIT=$(jq -r '.commit' dist/release.json)
 
-                  # Recompute SHA256 checksums for all signed binaries
-                  declare -A CHECKSUMS
+                  # Build checksums JSON object using jq to prevent injection
+                  CHECKSUMS_JSON='{}'
                   for file in dist/viberails-*; do
                       filename=$(basename "$file")
                       checksum=$(sha256sum "$file" | cut -d' ' -f1)
-                      CHECKSUMS["$filename"]="$checksum"
+                      # Use jq with --arg to safely escape values
+                      CHECKSUMS_JSON=$(echo "$CHECKSUMS_JSON" | jq --arg k "$filename" --arg v "$checksum" '. + {($k): $v}')
                   done
 
-                  # Build checksums JSON object
-                  CHECKSUMS_JSON="{"
-                  first=true
-                  for key in "${!CHECKSUMS[@]}"; do
-                      if [ "$first" = true ]; then
-                          first=false
-                      else
-                          CHECKSUMS_JSON+=","
-                      fi
-                      CHECKSUMS_JSON+="\"$key\":\"${CHECKSUMS[$key]}\""
-                  done
-                  CHECKSUMS_JSON+="}"
-
-                  # Update release.json with new checksums (pretty printed)
-                  echo "{\"version\": \"$VERSION\", \"timestamp\": $TIMESTAMP, \"commit\": \"$COMMIT\", \"checksums\": $CHECKSUMS_JSON}" | python3 -m json.tool > dist/release.json
+                  # Update release.json using jq for safe JSON construction
+                  jq -n \
+                      --arg version "$VERSION" \
+                      --arg timestamp "$TIMESTAMP" \
+                      --arg commit "$COMMIT" \
+                      --argjson checksums "$CHECKSUMS_JSON" \
+                      '{version: $version, timestamp: ($timestamp | tonumber), commit: $commit, checksums: $checksums}' \
+                      > dist/release.json
 
                   # Display updated release.json for verification
                   echo "Updated release.json with post-signing checksums:"
@@ -266,6 +274,9 @@ jobs:
     release:
         needs: [dist, code-sign]
         runs-on: ubuntu-latest
+        # Use 'release' environment for manual approval gate before publishing.
+        # Configure this environment in repo Settings -> Environments with required reviewers.
+        environment: release
         if: always() && startsWith(github.ref, 'refs/tags/') && needs.dist.result == 'success' && (needs.code-sign.result == 'success' || needs.code-sign.result == 'skipped')
 
         steps:
