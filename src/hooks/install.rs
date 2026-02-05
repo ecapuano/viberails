@@ -386,3 +386,57 @@ pub fn uninstall() -> Result<()> {
 pub fn should_delete_binary(selected_count: usize, installed_count_before: usize) -> bool {
     selected_count >= installed_count_before
 }
+
+/// Uninstall everything: remove all hooks from all providers, delete the binary, and remove config.
+///
+/// This performs a complete cleanup without prompting for provider selection.
+/// All detected providers with hooks installed will have their hooks removed.
+pub fn uninstall_all() -> Result<()> {
+    let mut success = true;
+    let dst = binary_location()?;
+
+    let registry = ProviderRegistry::new();
+
+    // Discover all providers and uninstall hooks from those that have them installed
+    let discoveries = registry.discover_all_with_hooks_check();
+    let providers_with_hooks: Vec<_> = discoveries
+        .iter()
+        .filter(|d| d.hooks_installed)
+        .collect();
+
+    if providers_with_hooks.is_empty() {
+        println!("No hooks are currently installed.");
+    } else {
+        // Uninstall hooks for all providers that have them installed
+        let mut all_results = Vec::new();
+
+        for discovery in &providers_with_hooks {
+            let results = uninstall_hooks_for_provider(&registry, &discovery.id);
+            all_results.extend(results);
+        }
+
+        display_results(&all_results);
+    }
+
+    // Always delete binary and config for full cleanup
+    if let Err(e) = uninstall_binary(&dst) {
+        error!("Unable to delete binary: {e}");
+        success = false;
+    } else {
+        println!("\nBinary removed: {}", dst.display());
+    }
+
+    if let Err(e) = uninstall_config() {
+        error!("Unable to delete config: {e}");
+        success = false;
+    } else {
+        println!("Configuration removed.");
+    }
+
+    if success {
+        println!("\n{}", "Full cleanup complete.".green());
+        Ok(())
+    } else {
+        Err(anyhow!("Uninstall had some failures. See logs for details."))
+    }
+}

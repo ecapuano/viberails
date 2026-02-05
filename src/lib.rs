@@ -14,7 +14,7 @@ pub use config::{
     ConfigureArgs, JoinTeamArgs, clean_debug_logs, configure, get_debug_log_path, is_authorized,
     is_auto_upgrade_enabled, join_team, set_debug_mode, show_configuration,
 };
-pub use hooks::{codex_hook, hook, install, list, uninstall, uninstall_hooks};
+pub use hooks::{codex_hook, hook, install, list, uninstall, uninstall_all, uninstall_hooks};
 pub use logging::Logging;
 pub use oauth::{LoginArgs, is_browser_available, login::login, open_browser};
 pub use providers::Providers;
@@ -35,6 +35,7 @@ pub enum MenuAction {
     InstallHooks,
     UninstallHooks,
     UninstallFully,
+    UninstallAll,
     ListHooks,
     ShowConfiguration,
     Quit,
@@ -78,6 +79,11 @@ pub fn get_menu_options() -> Vec<MenuOption> {
             label: "Uninstall",
             action: MenuAction::UninstallFully,
             shortcut: Some('f'),
+        },
+        MenuOption {
+            label: "Uninstall Everything",
+            action: MenuAction::UninstallAll,
+            shortcut: Some('e'),
         },
         MenuOption {
             label: "Quit",
