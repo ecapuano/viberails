@@ -6,4 +6,4 @@ pub use loader::{
 };
 
 #[cfg(test)]
-mod loader_tests;
+mod tests;
