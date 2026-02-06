@@ -14,7 +14,7 @@ use viberails::{
     get_menu_options, hook, install, is_authorized, is_auto_upgrade_enabled, is_browser_available,
     join_team, list, login, open_browser, poll_upgrade, set_debug_mode, show_configuration,
     tui::{MessageStyle, message_prompt, select_prompt_with_shortcuts, text_prompt},
-    uninstall, uninstall_all, uninstall_hooks, upgrade,
+    uninstall_all, uninstall_hooks, upgrade,
 };
 
 #[derive(Parser)]
@@ -48,9 +48,10 @@ enum Command {
 
     /// Install hooks
     Install,
-    /// Uninstall hooks (with provider selection)
-    Uninstall,
-    /// Uninstall everything: remove all hooks, binary, and config
+    /// Uninstall hooks from selected providers (keeps binary and config)
+    #[command(visible_alias = "uninstall")]
+    UninstallHooks,
+    /// Uninstall everything: remove all hooks, binary, config, and data
     #[command(visible_alias = "uninstall-all")]
     UninstallAll,
 
@@ -271,11 +272,6 @@ fn show_menu() -> Result<()> {
                 wait_for_keypress();
                 r
             }
-            Some(MenuAction::UninstallFully) => {
-                let r = uninstall();
-                wait_for_keypress();
-                r
-            }
             Some(MenuAction::UninstallAll) => {
                 let r = uninstall_all();
                 wait_for_keypress();
@@ -325,7 +321,7 @@ fn main() -> Result<()> {
     let ret = match args.command {
         None => show_menu(),
         Some(Command::Install) => install(),
-        Some(Command::Uninstall) => uninstall(),
+        Some(Command::UninstallHooks) => uninstall_hooks(),
         Some(Command::UninstallAll) => uninstall_all(),
         Some(Command::List) => {
             list();
