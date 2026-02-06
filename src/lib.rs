@@ -12,13 +12,13 @@ mod upgrade;
 pub use common::{PROJECT_NAME, PROJECT_VERSION};
 pub use config::{
     ConfigureArgs, JoinTeamArgs, clean_debug_logs, configure, get_debug_log_path, is_authorized,
-    join_team, set_debug_mode, show_configuration,
+    is_auto_upgrade_enabled, join_team, set_debug_mode, show_configuration,
 };
 pub use hooks::{codex_hook, hook, install, list, uninstall, uninstall_hooks};
 pub use logging::Logging;
 pub use oauth::{LoginArgs, is_browser_available, login::login, open_browser};
 pub use providers::Providers;
-pub use upgrade::{poll_upgrade, upgrade};
+pub use upgrade::{UpgradeResult, poll_upgrade, upgrade};
 
 /// Menu option for the interactive menu
 pub struct MenuOption {

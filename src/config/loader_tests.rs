@@ -43,12 +43,14 @@ fn test_user_config_audit_fields_serialization() {
         audit_tool_use: false,
         audit_prompts: false,
         debug: false,
+        auto_upgrade: true,
     };
     let json = serde_json::to_string(&config).unwrap();
 
     assert!(json.contains("\"audit_tool_use\":false"));
     assert!(json.contains("\"audit_prompts\":false"));
     assert!(json.contains("\"debug\":false"));
+    assert!(json.contains("\"auto_upgrade\":true"));
 
     let deserialized: UserConfig = serde_json::from_str(&json).unwrap();
     assert!(!deserialized.audit_tool_use);
@@ -195,6 +197,7 @@ fn test_debug_can_be_enabled() {
         audit_tool_use: true,
         audit_prompts: true,
         debug: true,
+        auto_upgrade: true,
     };
 
     let json = serde_json::to_string(&config).unwrap();
@@ -264,42 +267,52 @@ fn test_get_debug_log_path_creates_directory() {
     );
 }
 
+// Tests for create_secure_directory (isolated with temp directories)
+
 #[cfg(unix)]
 #[test]
-fn test_get_debug_log_path_secure_permissions() {
+fn test_create_secure_directory_sets_permissions() {
     use std::os::unix::fs::PermissionsExt;
 
-    use super::loader::get_debug_log_path;
+    use super::loader::create_secure_directory;
 
-    let debug_dir = get_debug_log_path().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
+    let test_dir = temp_dir.path().join("secure_test");
 
-    let perms = std::fs::metadata(&debug_dir).unwrap().permissions();
+    // Create directory with secure permissions
+    create_secure_directory(&test_dir).unwrap();
+
+    let perms = std::fs::metadata(&test_dir).unwrap().permissions();
     let mode = perms.mode() & 0o777;
 
-    // Should be owner-only (0o700)
     assert_eq!(
         mode, 0o700,
-        "Debug directory should have 0o700 permissions, got: {:o}",
+        "Directory should have 0o700 permissions, got: {:o}",
         mode
     );
 }
 
 #[cfg(unix)]
 #[test]
-fn test_get_debug_log_path_fixes_insecure_permissions() {
+fn test_create_secure_directory_fixes_insecure_permissions() {
     use std::os::unix::fs::PermissionsExt;
 
-    use super::loader::get_debug_log_path;
+    use super::loader::create_secure_directory;
 
-    // Ensure directory exists first
-    let debug_dir = get_debug_log_path().unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
+    let test_dir = temp_dir.path().join("insecure_test");
 
-    // Set insecure permissions (world-readable)
-    std::fs::set_permissions(&debug_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+    // Create directory with insecure permissions first
+    std::fs::create_dir_all(&test_dir).unwrap();
+    std::fs::set_permissions(&test_dir, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-    // Verify permissions changed - some CI environments (macOS sandbox) may prevent
+// Verify permissions changed - some CI environments (macOS sandbox) may prevent
     // setting more permissive modes, so skip the rest of the test if we can't
-    let mode_before = std::fs::metadata(&debug_dir).unwrap().permissions().mode() & 0o777;
+    let mode_before = std::fs::metadata(&test_dir)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
 
     if mode_before != 0o755 {
         // Platform restrictions prevent setting insecure permissions (e.g., macOS sandbox)
@@ -311,16 +324,34 @@ fn test_get_debug_log_path_fixes_insecure_permissions() {
         return;
     }
 
-    // Call get_debug_log_path again - should fix permissions
-    let _ = get_debug_log_path().unwrap();
+    // Call create_secure_directory - should fix permissions
+    create_secure_directory(&test_dir).unwrap();
 
     // Verify permissions are now secure
-    let mode_after = std::fs::metadata(&debug_dir).unwrap().permissions().mode() & 0o777;
+    let mode_after = std::fs::metadata(&test_dir)
+        .unwrap()
+        .permissions()
+        .mode()
+        & 0o777;
     assert_eq!(
         mode_after, 0o700,
-        "Debug directory permissions should be fixed to 0o700, got: {:o}",
+        "Directory permissions should be fixed to 0o700, got: {:o}",
         mode_after
     );
+}
+
+#[test]
+fn test_create_secure_directory_creates_nested_directories() {
+    use super::loader::create_secure_directory;
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let nested_dir = temp_dir.path().join("a").join("b").join("c");
+
+    // Create nested directory structure
+    create_secure_directory(&nested_dir).unwrap();
+
+    assert!(nested_dir.exists(), "Nested directory should be created");
+    assert!(nested_dir.is_dir(), "Path should be a directory");
 }
 
 // Tests for clean_logs_in_dir (uses temp directories for isolation)
@@ -411,6 +442,100 @@ fn test_clean_logs_in_dir_reports_correct_bytes() {
 
     assert_eq!(removed, 2);
     assert_eq!(bytes, 200, "Should report correct total bytes");
+}
+
+// Tests for auto_upgrade field
+
+#[test]
+fn test_auto_upgrade_defaults_to_true() {
+    let config = UserConfig::default();
+    assert!(config.auto_upgrade, "auto_upgrade must be true by default");
+}
+
+#[test]
+fn test_auto_upgrade_backwards_compatible() {
+    // Old config without auto_upgrade should default to true
+    let json = r#"{
+        "user": {
+            "fail_open": true,
+            "audit_tool_use": true,
+            "audit_prompts": true,
+            "debug": false
+        },
+        "install_id": "test-id",
+        "org": {
+            "oid": "",
+            "name": "",
+            "url": ""
+        }
+    }"#;
+
+    let mut temp_file = NamedTempFile::new().unwrap();
+    temp_file.write_all(json.as_bytes()).unwrap();
+
+    let config = Config::load_existing(temp_file.path()).unwrap();
+
+    // auto_upgrade should default to true when not present in old configs
+    assert!(config.user.auto_upgrade);
+}
+
+#[test]
+fn test_auto_upgrade_can_be_disabled() {
+    let json = r#"{
+        "user": {
+            "fail_open": true,
+            "audit_tool_use": true,
+            "audit_prompts": true,
+            "debug": false,
+            "auto_upgrade": false
+        },
+        "install_id": "test-id",
+        "org": {
+            "oid": "",
+            "name": "",
+            "url": ""
+        }
+    }"#;
+
+    let mut temp_file = NamedTempFile::new().unwrap();
+    temp_file.write_all(json.as_bytes()).unwrap();
+
+    let config = Config::load_existing(temp_file.path()).unwrap();
+    assert!(!config.user.auto_upgrade);
+}
+
+#[test]
+fn test_very_old_config_backwards_compatible() {
+    // Very old config format without debug or auto_upgrade fields
+    // Both should use their defaults (debug=false, auto_upgrade=true)
+    let json = r#"{
+        "user": {
+            "fail_open": true
+        },
+        "install_id": "legacy-install-id",
+        "org": {
+            "oid": "test-oid",
+            "name": "Test Org",
+            "url": "https://test.hook.limacharlie.io/oid/adapter/secret"
+        }
+    }"#;
+
+    let mut temp_file = NamedTempFile::new().unwrap();
+    temp_file.write_all(json.as_bytes()).unwrap();
+
+    let config = Config::load_existing(temp_file.path()).unwrap();
+
+    // Verify defaults applied correctly
+    assert!(config.user.fail_open);
+    assert!(config.user.audit_tool_use, "audit_tool_use should default to true");
+    assert!(config.user.audit_prompts, "audit_prompts should default to true");
+    assert!(!config.user.debug, "debug should default to false");
+    assert!(config.user.auto_upgrade, "auto_upgrade should default to true");
+
+    // Verify other fields loaded correctly
+    assert_eq!(config.install_id, "legacy-install-id");
+    assert_eq!(config.org.oid, "test-oid");
+    assert_eq!(config.org.name, "Test Org");
 }
 
 // Tests for parse_team_url

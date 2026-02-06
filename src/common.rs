@@ -1,8 +1,9 @@
 use std::{env, fs, path::PathBuf, sync::OnceLock};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
+use log::info;
 #[cfg(unix)]
-use log::debug;
+use log::{debug, warn};
 
 pub const PROJECT_NAME: &str = env!("CARGO_PKG_NAME");
 pub const PROJECT_VERSION: &str = env!("GIT_VERSION");
@@ -262,4 +263,205 @@ mod tests {
             mode
         );
     }
+}
+
+/// Returns the validated home directory for the current user.
+///
+/// On Unix, validates that HOME environment variable (if set) matches the
+/// actual home directory from the passwd database to prevent HOME injection attacks.
+///
+/// Parameters: None
+///
+/// Returns: Validated home directory path
+#[cfg(unix)]
+pub fn get_validated_home() -> Result<PathBuf> {
+    use std::ffi::CStr;
+    use std::mem::MaybeUninit;
+    use std::os::unix::ffi::OsStringExt;
+
+    // Get the actual home directory from passwd database (not from $HOME)
+    // Using getpwuid_r (reentrant/thread-safe) instead of getpwuid
+    let passwd_home = unsafe {
+        let uid = libc::getuid();
+
+        // Determine buffer size for getpwuid_r
+        // sysconf(_SC_GETPW_R_SIZE_MAX) returns suggested size, or -1 if indeterminate
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let bufsize = match libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX) {
+            n if n > 0 => n as usize,
+            _ => 16384, // Fallback to reasonable default
+        };
+
+        let mut buf = vec![0u8; bufsize];
+        let mut pwd: MaybeUninit<libc::passwd> = MaybeUninit::uninit();
+        let mut result: *mut libc::passwd = std::ptr::null_mut();
+
+        let ret = libc::getpwuid_r(
+            uid,
+            pwd.as_mut_ptr(),
+            buf.as_mut_ptr().cast::<libc::c_char>(),
+            bufsize,
+            std::ptr::addr_of_mut!(result),
+        );
+
+        if ret != 0 {
+            return Err(anyhow!(
+                "getpwuid_r failed for uid {uid}: {}",
+                std::io::Error::from_raw_os_error(ret)
+            ));
+        }
+
+        if result.is_null() {
+            return Err(anyhow!("No passwd entry found for uid {uid}"));
+        }
+
+        let pwd = pwd.assume_init();
+        if pwd.pw_dir.is_null() {
+            return Err(anyhow!("passwd entry has null home directory"));
+        }
+
+        // Preserve non-UTF-8 paths by converting raw bytes to OsString
+        let home_bytes = CStr::from_ptr(pwd.pw_dir).to_bytes().to_vec();
+        std::ffi::OsString::from_vec(home_bytes)
+    };
+
+    let passwd_home = PathBuf::from(passwd_home);
+
+    // Ensure home path is absolute (defense in depth)
+    if !passwd_home.is_absolute() {
+        bail!(
+            "Home directory path must be absolute: {}",
+            passwd_home.display()
+        );
+    }
+
+    // Also get what dirs::home_dir() returns (which may use $HOME)
+    let dirs_home = dirs::home_dir().ok_or_else(|| anyhow!("Unable to determine home directory"))?;
+
+    // If HOME env var is set, verify it matches passwd entry
+    if let Ok(env_home) = std::env::var("HOME") {
+        let env_home = PathBuf::from(&env_home);
+
+        // Canonicalize both paths for comparison (resolves symlinks)
+        let canonical_passwd = passwd_home
+            .canonicalize()
+            .unwrap_or_else(|_| passwd_home.clone());
+        let canonical_env = env_home.canonicalize().unwrap_or_else(|_| env_home.clone());
+
+        if canonical_passwd != canonical_env {
+            warn!(
+                "HOME environment variable ({}) differs from passwd entry ({}), using passwd entry",
+                env_home.display(),
+                passwd_home.display()
+            );
+            return Ok(passwd_home);
+        }
+    }
+
+    // Use dirs::home_dir() result if it matches or HOME wasn't set
+    Ok(dirs_home)
+}
+
+/// Returns the validated home directory for the current user.
+///
+/// On Windows, uses the standard APIs via dirs crate.
+///
+/// Parameters: None
+///
+/// Returns: Validated home directory path
+#[cfg(windows)]
+pub fn get_validated_home() -> Result<PathBuf> {
+    // On Windows, dirs::home_dir() uses proper Windows APIs (SHGetKnownFolderPath)
+    // which are not vulnerable to environment variable injection
+    let home = dirs::home_dir().ok_or_else(|| anyhow!("Unable to determine home directory"))?;
+
+    // Ensure home path is absolute (defense in depth)
+    if !home.is_absolute() {
+        bail!("Home directory path must be absolute: {}", home.display());
+    }
+
+    Ok(home)
+}
+
+/// Environment variable to override the binary installation directory.
+///
+/// This is an opt-in escape hatch for testing, CI, and environments that need
+/// to control where binaries are installed. In production, leave this unset
+/// to use the secure default (~/.local/bin with HOME validation).
+///
+/// Example usage in tests:
+///   export VIBERAILS_BIN_DIR="/tmp/test-home/.local/bin"
+const ENV_BIN_DIR_OVERRIDE: &str = "VIBERAILS_BIN_DIR";
+
+/// Returns the validated binary installation directory.
+///
+/// Uses ~/.local/bin/ on Unix-like systems. Validates the home directory
+/// to prevent HOME environment injection attacks.
+///
+/// If `VIBERAILS_BIN_DIR` environment variable is set, uses that path instead.
+/// This is an opt-in override for testing and CI environments that need to
+/// control the binary directory without modifying the system home.
+///
+/// Parameters: None
+///
+/// Returns: Path to the binary installation directory
+pub fn validated_binary_dir() -> Result<PathBuf> {
+    // Check for explicit override (for testing/CI)
+    if let Ok(override_dir) = std::env::var(ENV_BIN_DIR_OVERRIDE) {
+        let bin_dir = PathBuf::from(&override_dir);
+
+        // Still validate the override path for safety
+        if !bin_dir.is_absolute() {
+            bail!(
+                "{ENV_BIN_DIR_OVERRIDE} must be an absolute path: {override_dir}"
+            );
+        }
+
+        // Check for path traversal attempts
+        for component in bin_dir.components() {
+            if let std::path::Component::ParentDir = component {
+                bail!(
+                    "{ENV_BIN_DIR_OVERRIDE} contains parent directory references: {override_dir}"
+                );
+            }
+        }
+
+        if !bin_dir.exists() {
+            fs::create_dir_all(&bin_dir)
+                .with_context(|| format!("Unable to create {}", bin_dir.display()))?;
+        }
+
+        info!(
+            "Using binary directory override from {ENV_BIN_DIR_OVERRIDE}: {}",
+            bin_dir.display()
+        );
+        return Ok(bin_dir);
+    }
+
+    // Default: use validated home directory
+    let home = get_validated_home()?;
+
+    // Ensure home path is absolute (defense in depth)
+    if !home.is_absolute() {
+        bail!("Home directory path must be absolute: {}", home.display());
+    }
+
+    // Check for path traversal attempts
+    for component in home.components() {
+        if let std::path::Component::ParentDir = component {
+            bail!(
+                "Home directory path contains parent directory references: {}",
+                home.display()
+            );
+        }
+    }
+
+    let local_bin = home.join(".local").join("bin");
+
+    if !local_bin.exists() {
+        fs::create_dir_all(&local_bin)
+            .with_context(|| format!("Unable to create {}", local_bin.display()))?;
+    }
+
+    Ok(local_bin)
 }
