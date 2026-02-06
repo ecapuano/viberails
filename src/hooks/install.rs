@@ -8,7 +8,10 @@ use colored::Colorize;
 use log::{error, info, warn};
 
 use crate::{
-    common::{EXECUTABLE_NAME, display_authorize_help, print_header, project_config_dir, validated_binary_dir},
+    common::{
+        EXECUTABLE_NAME, PROJECT_NAME, display_authorize_help, print_header, project_config_dir,
+        project_data_dir, validated_binary_dir,
+    },
     config::Config,
     providers::{ProviderRegistry, select_providers, select_providers_for_uninstall},
     tui::{MessageStyle, message_prompt},
@@ -151,6 +154,72 @@ fn uninstall_config() -> Result<()> {
     info!("Config directory {} was deleted", config_dir.display());
 
     Ok(())
+}
+
+/// Removes the data directory containing debug logs, upgrade state, etc.
+///
+/// Parameters: None
+///
+/// Returns: Ok(()) on success, Err on failure
+fn uninstall_data_dir() -> Result<()> {
+    let data_dir = project_data_dir()?;
+
+    if !data_dir.exists() {
+        warn!("Data directory {} doesn't exist", data_dir.display());
+        return Ok(());
+    }
+
+    fs::remove_dir_all(&data_dir)
+        .with_context(|| format!("Unable to delete data directory {}", data_dir.display()))?;
+
+    info!("Data directory {} was deleted", data_dir.display());
+
+    Ok(())
+}
+
+/// Cleans up upgrade-related files from the binary directory.
+///
+/// This removes:
+/// - Upgrade lock file (.viberails.upgrade.lock)
+/// - Temporary upgrade binaries (viberails_upgrade_*)
+/// - Temporary new binaries (.viberails_new_*)
+///
+/// Parameters:
+///   - `bin_dir`: Path to the binary directory
+///
+/// Returns: Number of files cleaned up
+fn cleanup_upgrade_files(bin_dir: &Path) -> usize {
+    let mut cleaned = 0;
+
+    // Patterns for files to clean up
+    let lock_file = bin_dir.join(".viberails.upgrade.lock");
+    let upgrade_prefix = format!("{PROJECT_NAME}_upgrade_");
+    let new_binary_prefix = format!(".{PROJECT_NAME}_new_");
+
+    // Remove lock file
+    if lock_file.exists() {
+        if fs::remove_file(&lock_file).is_ok() {
+            info!("Removed upgrade lock file: {}", lock_file.display());
+            cleaned += 1;
+        }
+    }
+
+    // Remove upgrade and temp binaries
+    if let Ok(entries) = fs::read_dir(bin_dir) {
+        for entry in entries.flatten() {
+            let file_name = entry.file_name();
+            let name = file_name.to_string_lossy();
+
+            if name.starts_with(&upgrade_prefix) || name.starts_with(&new_binary_prefix) {
+                if fs::remove_file(entry.path()).is_ok() {
+                    info!("Removed temp file: {}", entry.path().display());
+                    cleaned += 1;
+                }
+            }
+        }
+    }
+
+    cleaned
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -387,13 +456,22 @@ pub fn should_delete_binary(selected_count: usize, installed_count_before: usize
     selected_count >= installed_count_before
 }
 
-/// Uninstall everything: remove all hooks from all providers, delete the binary, and remove config.
+/// Uninstall everything: remove all hooks from all providers, delete the binary, and remove all data.
 ///
 /// This performs a complete cleanup without prompting for provider selection.
 /// All detected providers with hooks installed will have their hooks removed.
+/// Also removes:
+/// - Binary from ~/.local/bin/
+/// - Config directory (~/.config/viberails/)
+/// - Data directory (~/.local/share/viberails/) containing debug logs and upgrade state
+/// - Upgrade lock files and temporary binaries
 pub fn uninstall_all() -> Result<()> {
     let mut success = true;
     let dst = binary_location()?;
+    let bin_dir = dst
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
 
     let registry = ProviderRegistry::new();
 
@@ -418,19 +496,34 @@ pub fn uninstall_all() -> Result<()> {
         display_results(&all_results);
     }
 
-    // Always delete binary and config for full cleanup
+    // Clean up upgrade-related files (lock files, temp binaries)
+    let cleaned_files = cleanup_upgrade_files(&bin_dir);
+    if cleaned_files > 0 {
+        println!("\nCleaned up {cleaned_files} temporary file(s).");
+    }
+
+    // Delete the binary
     if let Err(e) = uninstall_binary(&dst) {
         error!("Unable to delete binary: {e}");
         success = false;
     } else {
-        println!("\nBinary removed: {}", dst.display());
+        println!("Binary removed: {}", dst.display());
     }
 
+    // Delete config directory
     if let Err(e) = uninstall_config() {
         error!("Unable to delete config: {e}");
         success = false;
     } else {
         println!("Configuration removed.");
+    }
+
+    // Delete data directory (debug logs, upgrade state, etc.)
+    if let Err(e) = uninstall_data_dir() {
+        error!("Unable to delete data directory: {e}");
+        success = false;
+    } else {
+        println!("Data directory removed (debug logs, upgrade state).");
     }
 
     if success {
