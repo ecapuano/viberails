@@ -52,7 +52,6 @@ enum Command {
     #[command(visible_alias = "uninstall")]
     UninstallHooks,
     /// Uninstall everything: remove all hooks, binary, config, and data
-    #[command(visible_alias = "uninstall-all")]
     UninstallAll,
 
     /// List Hooks
