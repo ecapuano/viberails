@@ -78,6 +78,7 @@ do_install() {
 
 do_join_team() {
     local url="$1"
+    shift  # Remove URL from arguments
     local os arch artifact_name download_url
 
     os="$(detect_os)"
@@ -118,10 +119,18 @@ do_join_team() {
     "$tmp_file" -V
 
     # Run join-team subcommand with URL
-    "$tmp_file" join "$url"
+    if ! "$tmp_file" join "$url"; then
+        echo "Error: Failed to join team. Aborting installation." >&2
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
 
-    # Run install subcommand
-    "$tmp_file" install
+    # Run install subcommand with optional provider arguments
+    if [ $# -gt 0 ]; then
+        "$tmp_file" install "$@"
+    else
+        "$tmp_file" install
+    fi
 
     # Clean up temp directory
     rm -rf "$tmp_dir"
@@ -231,10 +240,11 @@ main() {
         join-team)
             if [ -z "${2:-}" ]; then
                 echo "Error: join-team requires a URL argument" >&2
-                echo "Usage: $0 join-team <url>" >&2
+                echo "Usage: $0 join-team <url> [--providers <ids>]" >&2
                 exit 1
             fi
-            do_join_team "$2"
+            shift  # Remove 'join-team' command
+            do_join_team "$@"  # Pass all remaining arguments (URL + optional --providers)
             ;;
         uninstall)
             do_uninstall
@@ -244,7 +254,7 @@ main() {
             ;;
         *)
             echo "Error: Unknown command: $command" >&2
-            echo "Usage: $0 [install|join-team <url>|uninstall|upgrade]" >&2
+            echo "Usage: $0 [install|join-team <url> [--providers <ids>]|uninstall|upgrade]" >&2
             exit 1
             ;;
     esac
