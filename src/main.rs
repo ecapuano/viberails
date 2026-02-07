@@ -48,15 +48,15 @@ enum Command {
 
     /// Install hooks
     Install {
-        /// Provider IDs to install (comma-separated: claude-code,cursor,gemini-cli,codex,opencode,openclaw) or "all" for all detected
-        #[arg(long, short)]
-        providers: Option<String>,
+        /// Provider IDs (claude-code,cursor,gemini-cli,codex,opencode,openclaw) or "all" for all detected
+        #[arg(long, short, value_delimiter = ',')]
+        providers: Option<Vec<String>>,
     },
     /// Uninstall hooks
     Uninstall {
-        /// Provider IDs to uninstall (comma-separated: claude-code,cursor,gemini-cli,codex,opencode,openclaw) or "all" for all installed
-        #[arg(long, short)]
-        providers: Option<String>,
+        /// Provider IDs (claude-code,cursor,gemini-cli,codex,opencode,openclaw) or "all" for all installed
+        #[arg(long, short, value_delimiter = ',')]
+        providers: Option<Vec<String>>,
     },
 
     /// List Hooks
@@ -324,8 +324,14 @@ fn main() -> Result<()> {
 
     let ret = match args.command {
         None => show_menu(),
-        Some(Command::Install { providers }) => install(providers.as_deref()),
-        Some(Command::Uninstall { providers }) => uninstall(providers.as_deref()),
+        Some(Command::Install { providers }) => {
+            let providers_str = providers.map(|p| p.join(","));
+            install(providers_str.as_deref())
+        }
+        Some(Command::Uninstall { providers }) => {
+            let providers_str = providers.map(|p| p.join(","));
+            uninstall(providers_str.as_deref())
+        }
         Some(Command::List) => {
             list();
             Ok(())

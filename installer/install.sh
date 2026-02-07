@@ -79,7 +79,6 @@ do_install() {
 do_join_team() {
     local url="$1"
     shift  # Remove URL from arguments
-    local providers="$*"  # Remaining arguments are provider options
     local os arch artifact_name download_url
 
     os="$(detect_os)"
@@ -120,11 +119,15 @@ do_join_team() {
     "$tmp_file" -V
 
     # Run join-team subcommand with URL
-    "$tmp_file" join "$url"
+    if ! "$tmp_file" join "$url"; then
+        echo "Error: Failed to join team. Aborting installation." >&2
+        rm -rf "$tmp_dir"
+        exit 1
+    fi
 
     # Run install subcommand with optional provider arguments
-    if [ -n "$providers" ]; then
-        "$tmp_file" install $providers
+    if [ $# -gt 0 ]; then
+        "$tmp_file" install "$@"
     else
         "$tmp_file" install
     fi

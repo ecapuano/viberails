@@ -10,7 +10,7 @@ use log::{error, info, warn};
 use crate::{
     common::{EXECUTABLE_NAME, display_authorize_help, print_header, project_config_dir, validated_binary_dir},
     config::Config,
-    providers::{ProviderRegistry, select_providers, select_providers_for_uninstall},
+    providers::{DiscoveryResult, ProviderRegistry, select_providers, select_providers_for_uninstall},
     tui::{MessageStyle, message_prompt},
 };
 
@@ -18,17 +18,11 @@ use crate::{
 /// Supports comma-separated provider IDs or "all".
 /// For install: "all" means all detected providers.
 /// For uninstall: "all" means all providers with hooks installed.
-fn parse_provider_selection(
-    registry: &ProviderRegistry,
+pub(crate) fn parse_provider_selection(
+    discoveries: &[DiscoveryResult],
     provider_list: &str,
     is_uninstall: bool,
 ) -> Result<Vec<&'static str>> {
-    let discoveries = if is_uninstall {
-        registry.discover_all_with_hooks_check()
-    } else {
-        registry.discover_all()
-    };
-
     if provider_list.trim().eq_ignore_ascii_case("all") {
         // Select all appropriate providers based on mode
         let selected: Vec<&'static str> = discoveries
@@ -57,13 +51,32 @@ fn parse_provider_selection(
             bail!("No provider IDs specified");
         }
 
+        let valid_ids: Vec<&str> = discoveries.iter().map(|d| d.id).collect();
+
         let mut selected = Vec::new();
         for requested_id in requested_ids {
             // Find the provider in discoveries
             if let Some(discovery) = discoveries.iter().find(|d| d.id == requested_id) {
+                // Validate that the provider is appropriate for the mode
+                if !is_uninstall && !discovery.detected {
+                    bail!(
+                        "Provider '{requested_id}' is not detected on this system. \
+                         Install it first or use 'all' to select all detected providers."
+                    );
+                }
+                if is_uninstall && !discovery.hooks_installed {
+                    bail!(
+                        "Provider '{requested_id}' does not have hooks installed. \
+                         Use 'all' to select all providers with hooks installed."
+                    );
+                }
                 selected.push(discovery.id);
             } else {
-                bail!("Unknown provider ID: {requested_id}");
+                bail!(
+                    "Unknown provider ID: '{}'. Valid IDs: {}",
+                    requested_id,
+                    valid_ids.join(", ")
+                );
             }
         }
 
@@ -279,7 +292,8 @@ pub fn install(providers: Option<&str>) -> Result<()> {
 
     let selected_ids = if let Some(provider_list) = providers {
         // Non-interactive mode: parse provider IDs from CLI
-        parse_provider_selection(&registry, provider_list, false)?
+        let discoveries = registry.discover_all();
+        parse_provider_selection(&discoveries, provider_list, false)?
     } else {
         // Interactive mode: show selection UI
         let selection = select_providers(&registry)?;
@@ -385,17 +399,14 @@ pub fn uninstall(providers: Option<&str>) -> Result<()> {
     //
     let registry = ProviderRegistry::new();
 
-    // Count installed hooks BEFORE uninstalling (to correctly detect partial uninstall)
+    // Discover providers with hooks check BEFORE uninstalling (to correctly detect partial uninstall)
     // Bug fix: Previously this was checked AFTER uninstalling, so count was always 0
-    let installed_count_before = registry
-        .discover_all_with_hooks_check()
-        .iter()
-        .filter(|d| d.hooks_installed)
-        .count();
+    let discoveries = registry.discover_all_with_hooks_check();
+    let installed_count_before = discoveries.iter().filter(|d| d.hooks_installed).count();
 
     let selected_ids = if let Some(provider_list) = providers {
         // Non-interactive mode: parse provider IDs from CLI
-        parse_provider_selection(&registry, provider_list, true)?
+        parse_provider_selection(&discoveries, provider_list, true)?
     } else {
         // Interactive mode: show selection UI
         let selection = select_providers_for_uninstall(&registry)?;
