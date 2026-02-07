@@ -81,6 +81,8 @@ struct CloudRequestMeta<'a> {
     query_type: CloudQueryType,
     #[serde(skip_serializing_if = "Option::is_none")]
     username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ppid: Option<u32>,
     version: CloudRequestMetaVersion,
 }
 
@@ -98,6 +100,56 @@ pub struct CloudQuery<'a> {
     url: String,
     secret: String,
     provider: Providers,
+}
+
+#[cfg(unix)]
+fn get_ppid() -> Option<u32> {
+    // SAFETY: getppid() is always safe on Unix — no failure mode.
+    let ppid = unsafe { libc::getppid() };
+    u32::try_from(ppid).ok()
+}
+
+#[cfg(windows)]
+fn get_ppid() -> Option<u32> {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
+
+    let current_pid = std::process::id();
+
+    // SAFETY: CreateToolhelp32Snapshot with TH32CS_SNAPPROCESS and 0 is always valid.
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if snapshot == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+        return None;
+    }
+
+    // SAFETY: zeroed PROCESSENTRY32W with dwSize set is the documented initialization.
+    let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
+    entry.dwSize = u32::try_from(std::mem::size_of::<PROCESSENTRY32W>()).ok()?;
+
+    // SAFETY: snapshot is valid, entry is properly initialized.
+    let ok = unsafe { Process32FirstW(snapshot, &mut entry) };
+    if ok == 0 {
+        unsafe { CloseHandle(snapshot) };
+        return None;
+    }
+
+    loop {
+        if entry.th32ProcessID == current_pid {
+            unsafe { CloseHandle(snapshot) };
+            return Some(entry.th32ParentProcessID);
+        }
+        // SAFETY: snapshot is valid, entry is properly initialized.
+        if unsafe { Process32NextW(snapshot, &mut entry) } == 0 {
+            break;
+        }
+    }
+
+    // SAFETY: snapshot is a valid handle obtained from CreateToolhelp32Snapshot.
+    unsafe { CloseHandle(snapshot) };
+    None
 }
 
 fn mine_session_id(data: &Value) -> Option<String> {
@@ -151,6 +203,7 @@ impl<'a> CloudRequestMeta<'a> {
         };
 
         let username = whoami::username().ok();
+        let ppid = get_ppid();
 
         Ok(Self {
             ts,
@@ -161,6 +214,7 @@ impl<'a> CloudRequestMeta<'a> {
             source,
             query_type,
             username,
+            ppid,
             version,
         })
     }
