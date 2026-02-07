@@ -127,7 +127,11 @@ fn get_ppid() -> Option<u32> {
 
     // SAFETY: zeroed PROCESSENTRY32W with dwSize set is the documented initialization.
     let mut entry: PROCESSENTRY32W = unsafe { std::mem::zeroed() };
-    entry.dwSize = u32::try_from(std::mem::size_of::<PROCESSENTRY32W>()).ok()?;
+    let Some(dw_size) = u32::try_from(std::mem::size_of::<PROCESSENTRY32W>()).ok() else {
+        unsafe { CloseHandle(snapshot) };
+        return None;
+    };
+    entry.dwSize = dw_size;
 
     // SAFETY: snapshot is valid, entry is properly initialized.
     let ok = unsafe { Process32FirstW(snapshot, &mut entry) };
@@ -406,5 +410,17 @@ impl<'a> CloudQuery<'a> {
         };
 
         Ok(verdict)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_ppid_returns_some() {
+        let ppid = get_ppid();
+        assert!(ppid.is_some(), "get_ppid() should return Some on Unix/Windows");
+        assert!(ppid.is_some_and(|p| p > 0), "ppid should be > 0");
     }
 }
