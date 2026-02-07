@@ -5,6 +5,9 @@
 
 .EXAMPLE
     $u="https://..."; irm https://get.viberails.io/join.ps1 | iex
+
+.EXAMPLE
+    $u="https://..."; $p="claude-code"; irm https://get.viberails.io/join.ps1 | iex
 #>
 
 $ErrorActionPreference = "Stop"
@@ -71,6 +74,7 @@ function Get-Binary {
 if (-not $u) {
     Write-Error "Variable `$u is required"
     Write-Host "Usage: `$u=`"<team-url>`"; irm https://get.viberails.io/join.ps1 | iex"
+    Write-Host "Optional: `$u=`"<team-url>`"; `$p=`"claude-code`"; irm https://get.viberails.io/join.ps1 | iex"
     exit 1
 }
 
@@ -80,7 +84,13 @@ try {
     & $download.TmpFile -V
     & $download.TmpFile join $u
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    & $download.TmpFile install
+
+    # Install with optional provider selection
+    if ($p) {
+        & $download.TmpFile install --providers $p
+    } else {
+        & $download.TmpFile install
+    }
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 finally {
