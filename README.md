@@ -81,8 +81,23 @@ viberails init-team --existing-org <OID>
 
 ### 2. Install Hooks
 
+**Interactive mode** (detects and lets you choose):
+
 ```bash
 viberails install
+```
+
+**Non-interactive mode** (for scripts/automation):
+
+```bash
+# Install for specific tools
+viberails install --providers claude-code
+
+# Install for multiple tools
+viberails install --providers claude-code,cursor,gemini-cli
+
+# Install for all detected tools
+viberails install --providers all
 ```
 
 Viberails automatically detects which AI tools you have installed and lets you choose which ones to hook:
@@ -95,20 +110,36 @@ Viberails automatically detects which AI tools you have installed and lets you c
   [ ] OpenAI Codex CLI [not found]
 ```
 
+**Available provider IDs:** `claude-code`, `cursor`, `gemini-cli`, `codex`, `opencode`, `openclaw`
+
 ### 3. Add Your Team
 
 After setup, you'll receive a command to share with your colleagues. They can join with a single command:
 
-**macOS/Linux:**
+**Interactive mode** (choose tools during install):
 
 ```bash
+# macOS/Linux
 bash <(curl -fsSL https://get.viberails.io/install.sh) join-team <YOUR_TEAM_URL>
+
+# Windows (PowerShell)
+$u="<YOUR_TEAM_URL>"; irm https://get.viberails.io/join.ps1 | iex
 ```
 
-**Windows (PowerShell):**
+**Non-interactive mode** (specify tools upfront):
 
-```powershell
-$u="<YOUR_TEAM_URL>"; irm https://get.viberails.io/join.ps1 | iex
+```bash
+# macOS/Linux - install for specific tools
+bash <(curl -fsSL https://get.viberails.io/install.sh) join-team <YOUR_TEAM_URL> --providers claude-code
+
+# macOS/Linux - install for all detected tools
+bash <(curl -fsSL https://get.viberails.io/install.sh) join-team <YOUR_TEAM_URL> --providers all
+
+# Windows (PowerShell) - install for specific tools
+$u="<YOUR_TEAM_URL>"; $p="claude-code"; irm https://get.viberails.io/join.ps1 | iex
+
+# Windows (PowerShell) - install for all detected tools
+$u="<YOUR_TEAM_URL>"; $p="all"; irm https://get.viberails.io/join.ps1 | iex
 ```
 
 That's it! Your team now has complete visibility into AI coding assistant activity.
@@ -155,17 +186,19 @@ When disabled, you can still manually upgrade with `viberails upgrade`.
 
 ## Commands Reference
 
-| Command           | Alias         | Description                            |
-| ----------------- | ------------- | -------------------------------------- |
-| `init-team`       | `init`        | Create a new team via OAuth            |
-| `join-team <URL>` | `join`        | Join an existing team                  |
-| `install`         |               | Install hooks for detected AI tools    |
-| `uninstall`       |               | Remove hooks and optionally the binary |
-| `list`            | `ls`          | Show installed hooks                   |
-| `show-config`     |               | Display current configuration          |
-| `upgrade`         |               | Update to the latest version           |
-| `debug`           |               | Enable/disable debug logging           |
-| `debug-clean`     | `clean-debug` | Remove accumulated debug logs          |
+| Command                     | Alias         | Description                            |
+| --------------------------- | ------------- | -------------------------------------- |
+| `init-team`                 | `init`        | Create a new team via OAuth            |
+| `join-team <URL>`           | `join`        | Join an existing team                  |
+| `install`                   |               | Install hooks for detected AI tools    |
+| `install --providers <ids>` |               | Non-interactive install for specific providers |
+| `uninstall`                 |               | Remove hooks and optionally the binary |
+| `uninstall --providers <ids>` |             | Non-interactive uninstall for specific providers |
+| `list`                      | `ls`          | Show installed hooks                   |
+| `show-config`               |               | Display current configuration          |
+| `upgrade`                   |               | Update to the latest version           |
+| `debug`                     |               | Enable/disable debug logging           |
+| `debug-clean`               | `clean-debug` | Remove accumulated debug logs          |
 
 Run `viberails --help` for detailed usage information.
 

@@ -47,9 +47,17 @@ enum Command {
     ShowConfiguration,
 
     /// Install hooks
-    Install,
+    Install {
+        /// Provider IDs to install (comma-separated: claude-code,cursor,gemini-cli,codex,opencode,openclaw) or "all" for all detected
+        #[arg(long, short)]
+        providers: Option<String>,
+    },
     /// Uninstall hooks
-    Uninstall,
+    Uninstall {
+        /// Provider IDs to uninstall (comma-separated: claude-code,cursor,gemini-cli,codex,opencode,openclaw) or "all" for all installed
+        #[arg(long, short)]
+        providers: Option<String>,
+    },
 
     /// List Hooks
     #[command(visible_alias = "ls")]
@@ -225,7 +233,7 @@ fn show_menu() -> Result<()> {
                     wait_for_keypress();
                     continue;
                 }
-                install()?;
+                install(None)?;
                 open_team_dashboard();
                 return Ok(()); // Exit after successful installation
             }
@@ -247,7 +255,7 @@ fn show_menu() -> Result<()> {
                     wait_for_keypress();
                     continue;
                 }
-                install()?;
+                install(None)?;
                 open_team_dashboard();
                 return Ok(()); // Exit after successful installation
             }
@@ -260,7 +268,7 @@ fn show_menu() -> Result<()> {
                     );
                     continue;
                 }
-                install()?;
+                install(None)?;
                 return Ok(()); // Exit after successful installation
             }
             Some(MenuAction::UninstallHooks) => {
@@ -269,7 +277,7 @@ fn show_menu() -> Result<()> {
                 r
             }
             Some(MenuAction::UninstallFully) => {
-                let r = uninstall();
+                let r = uninstall(None);
                 wait_for_keypress();
                 r
             }
@@ -316,8 +324,8 @@ fn main() -> Result<()> {
 
     let ret = match args.command {
         None => show_menu(),
-        Some(Command::Install) => install(),
-        Some(Command::Uninstall) => uninstall(),
+        Some(Command::Install { providers }) => install(providers.as_deref()),
+        Some(Command::Uninstall { providers }) => uninstall(providers.as_deref()),
         Some(Command::List) => {
             list();
             Ok(())

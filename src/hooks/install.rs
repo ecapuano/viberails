@@ -14,6 +14,63 @@ use crate::{
     tui::{MessageStyle, message_prompt},
 };
 
+/// Parse provider selection from CLI argument.
+/// Supports comma-separated provider IDs or "all".
+/// For install: "all" means all detected providers.
+/// For uninstall: "all" means all providers with hooks installed.
+fn parse_provider_selection(
+    registry: &ProviderRegistry,
+    provider_list: &str,
+    is_uninstall: bool,
+) -> Result<Vec<&'static str>> {
+    let discoveries = if is_uninstall {
+        registry.discover_all_with_hooks_check()
+    } else {
+        registry.discover_all()
+    };
+
+    if provider_list.trim().eq_ignore_ascii_case("all") {
+        // Select all appropriate providers based on mode
+        let selected: Vec<&'static str> = discoveries
+            .iter()
+            .filter(|d| if is_uninstall { d.hooks_installed } else { d.detected })
+            .map(|d| d.id)
+            .collect();
+
+        if selected.is_empty() {
+            if is_uninstall {
+                bail!("No providers have hooks installed");
+            }
+            bail!("No supported AI coding tools detected");
+        }
+
+        Ok(selected)
+    } else {
+        // Parse comma-separated list
+        let requested_ids: Vec<&str> = provider_list
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if requested_ids.is_empty() {
+            bail!("No provider IDs specified");
+        }
+
+        let mut selected = Vec::new();
+        for requested_id in requested_ids {
+            // Find the provider in discoveries
+            if let Some(discovery) = discoveries.iter().find(|d| d.id == requested_id) {
+                selected.push(discovery.id);
+            } else {
+                bail!("Unknown provider ID: {requested_id}");
+            }
+        }
+
+        Ok(selected)
+    }
+}
+
 const LABEL_WIDTH: usize = 20;
 
 struct InstallResult {
@@ -205,7 +262,7 @@ pub fn install_binary(dst: &Path) -> Result<()> {
     Ok(())
 }
 
-pub fn install() -> Result<()> {
+pub fn install(providers: Option<&str>) -> Result<()> {
     //
     // Make sure we're autorized, otherwise it'll fail silently
     //
@@ -219,17 +276,26 @@ pub fn install() -> Result<()> {
     // Create the registry and let the user select providers
     //
     let registry = ProviderRegistry::new();
-    let selection = select_providers(&registry)?;
 
-    let Some(selection) = selection else {
-        println!("Installation cancelled.");
-        return Ok(());
+    let selected_ids = if let Some(provider_list) = providers {
+        // Non-interactive mode: parse provider IDs from CLI
+        parse_provider_selection(&registry, provider_list, false)?
+    } else {
+        // Interactive mode: show selection UI
+        let selection = select_providers(&registry)?;
+
+        let Some(selection) = selection else {
+            println!("Installation cancelled.");
+            return Ok(());
+        };
+
+        if selection.selected_ids.is_empty() {
+            println!("No providers selected.");
+            return Ok(());
+        }
+
+        selection.selected_ids
     };
-
-    if selection.selected_ids.is_empty() {
-        println!("No providers selected.");
-        return Ok(());
-    }
 
     //
     // We also have to install ourselves on the host. We'll do like claude-code
@@ -246,18 +312,23 @@ pub fn install() -> Result<()> {
     //
     let mut all_results = Vec::new();
 
-    for provider_id in &selection.selected_ids {
+    for provider_id in &selected_ids {
         let results = install_hooks_for_provider(&registry, provider_id);
         all_results.extend(results);
     }
 
     display_results(&all_results);
 
-    message_prompt(
-        " Installation Complete ",
-        "Hooks installed successfully! Your AI coding tools will now use viberails.",
-        MessageStyle::Success,
-    )?;
+    // Only show interactive prompt if in interactive mode
+    if providers.is_none() {
+        message_prompt(
+            " Installation Complete ",
+            "Hooks installed successfully! Your AI coding tools will now use viberails.",
+            MessageStyle::Success,
+        )?;
+    } else {
+        println!("\nHooks installed successfully! Your AI coding tools will now use viberails.");
+    }
 
     Ok(())
 }
@@ -305,7 +376,7 @@ pub fn uninstall_hooks() -> Result<()> {
 ///
 /// This performs a complete uninstallation by removing hooks from
 /// selected providers and deleting the binary if all hooks are removed.
-pub fn uninstall() -> Result<()> {
+pub fn uninstall(providers: Option<&str>) -> Result<()> {
     let mut success = true;
     let dst = binary_location()?;
 
@@ -322,24 +393,32 @@ pub fn uninstall() -> Result<()> {
         .filter(|d| d.hooks_installed)
         .count();
 
-    let selection = select_providers_for_uninstall(&registry)?;
+    let selected_ids = if let Some(provider_list) = providers {
+        // Non-interactive mode: parse provider IDs from CLI
+        parse_provider_selection(&registry, provider_list, true)?
+    } else {
+        // Interactive mode: show selection UI
+        let selection = select_providers_for_uninstall(&registry)?;
 
-    let Some(selection) = selection else {
-        println!("Uninstallation cancelled.");
-        return Ok(());
+        let Some(selection) = selection else {
+            println!("Uninstallation cancelled.");
+            return Ok(());
+        };
+
+        if selection.selected_ids.is_empty() {
+            println!("No providers selected.");
+            return Ok(());
+        }
+
+        selection.selected_ids
     };
-
-    if selection.selected_ids.is_empty() {
-        println!("No providers selected.");
-        return Ok(());
-    }
 
     //
     // Uninstall hooks for each selected provider
     //
     let mut all_results = Vec::new();
 
-    for provider_id in &selection.selected_ids {
+    for provider_id in &selected_ids {
         let results = uninstall_hooks_for_provider(&registry, provider_id);
         all_results.extend(results);
     }
@@ -350,7 +429,7 @@ pub fn uninstall() -> Result<()> {
     // Only delete binary if ALL providers with hooks installed were uninstalled
     //
     let all_uninstalled =
-        should_delete_binary(selection.selected_ids.len(), installed_count_before);
+        should_delete_binary(selected_ids.len(), installed_count_before);
 
     if all_uninstalled {
         if let Err(e) = uninstall_binary(&dst) {
