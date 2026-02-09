@@ -8,6 +8,11 @@ on:
         branches: ["master"]
     workflow_dispatch:
         inputs:
+            dry_run:
+                description: "Dry run: execute full pipeline (build, dist, sign) but skip the release upload"
+                required: false
+                default: false
+                type: boolean
             code_signing:
                 description: "Enable code signing"
                 required: false
@@ -90,7 +95,7 @@ jobs:
                   toolchain: stable
 
             - name: Cache cargo registry and build
-              uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
+              uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
               with:
                   path: |
                       ~/.cargo/registry
@@ -352,7 +357,7 @@ jobs:
         # Use 'release' environment for manual approval gate before publishing.
         # Configure this environment in repo Settings -> Environments with required reviewers.
         environment: release
-        if: always() && startsWith(github.ref, 'refs/tags/') && needs.dist.result == 'success' && (needs.code-sign.result == 'success' || needs.code-sign.result == 'skipped')
+        if: always() && startsWith(github.ref, 'refs/tags/') && inputs.dry_run != true && needs.dist.result == 'success' && (needs.code-sign.result == 'success' || needs.code-sign.result == 'skipped')
 
         steps:
             - name: Download signed distribution artifacts
@@ -395,12 +400,13 @@ jobs:
                   parent: false
 
             - name: Verify uploaded release.json
+              env:
+                  TAG: ${{ github.ref_name }}
               run: |
                   # Allow time for CDN propagation
                   sleep 5
 
                   BASE_URL="https://get.viberails.io"
-                  TAG="${{ github.ref_name }}"
 
                   echo "=== Verifying latest release.json ==="
                   LATEST_JSON=$(curl -fsSL "${BASE_URL}/release.json")
