@@ -81,6 +81,8 @@ struct CloudRequestMeta<'a> {
     query_type: CloudQueryType,
     #[serde(skip_serializing_if = "Option::is_none")]
     username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ppid: Option<u32>,
     version: CloudRequestMetaVersion,
 }
 
@@ -98,6 +100,19 @@ pub struct CloudQuery<'a> {
     url: String,
     secret: String,
     provider: Providers,
+}
+
+fn get_ppid() -> Option<u32> {
+    use sysinfo::{ProcessRefreshKind, System, UpdateKind};
+
+    let pid = sysinfo::get_current_pid().ok()?;
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(
+        sysinfo::ProcessesToUpdate::Some(&[pid]),
+        false,
+        ProcessRefreshKind::nothing().with_exe(UpdateKind::Never),
+    );
+    sys.process(pid)?.parent().map(sysinfo::Pid::as_u32)
 }
 
 fn mine_session_id(data: &Value) -> Option<String> {
@@ -151,6 +166,7 @@ impl<'a> CloudRequestMeta<'a> {
         };
 
         let username = whoami::username().ok();
+        let ppid = get_ppid();
 
         Ok(Self {
             ts,
@@ -161,6 +177,7 @@ impl<'a> CloudRequestMeta<'a> {
             source,
             query_type,
             username,
+            ppid,
             version,
         })
     }
@@ -352,5 +369,17 @@ impl<'a> CloudQuery<'a> {
         };
 
         Ok(verdict)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_ppid_returns_some() {
+        let ppid = get_ppid();
+        assert!(ppid.is_some(), "get_ppid() should return Some on Unix/Windows");
+        assert!(ppid.is_some_and(|p| p > 0), "ppid should be > 0");
     }
 }

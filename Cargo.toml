@@ -16,6 +16,7 @@ fs2 = "0.4"
 rand = "0.9"
 hostname = "0.4"
 libc = "0.2"
+sysinfo = { version = "0.38", default-features = false, features = ["system"] }
 log = "0.4"
 minreq = { version = "2.14", features = [
   "https-rustls-probe",
