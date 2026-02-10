@@ -34,6 +34,7 @@ teardown() {
 
     # Create an authorized config that points to the local mock endpoint.
     # URL includes the secret as the final segment, matching CloudQuery parsing.
+    mkdir -p "$config_dir"
     local config_file="${config_dir}/config.json"
     cat > "$config_file" <<EOF
 {
@@ -59,7 +60,7 @@ EOF
         echo "  HOME=$HOME" >&2
         echo "  XDG_CONFIG_HOME=$XDG_CONFIG_HOME" >&2
         echo "  OSTYPE=$OSTYPE" >&2
-        echo "  get_config_dir=$(get_config_dir)" >&2
+        echo "  VIBERAILS_CONFIG_DIR=$VIBERAILS_CONFIG_DIR" >&2
         return 1
     fi
 

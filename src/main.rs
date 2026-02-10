@@ -13,8 +13,8 @@ use viberails::{
     Providers, UpgradeResult, clean_debug_logs, codex_hook, configure, get_debug_log_path,
     get_menu_options, hook, install, is_authorized, is_auto_upgrade_enabled, is_browser_available,
     join_team, list, login, open_browser, poll_upgrade, set_debug_mode, show_configuration,
-    tui::{MessageStyle, message_prompt, select_prompt_with_shortcuts, text_prompt},
-    uninstall, uninstall_hooks, upgrade,
+    tui::{MessageStyle, message_prompt, select_prompt, select_prompt_with_shortcuts, text_prompt},
+    uninstall_all, uninstall_hooks, upgrade,
 };
 
 #[derive(Parser)]
@@ -52,11 +52,14 @@ enum Command {
         #[arg(long, short)]
         providers: Option<String>,
     },
-    /// Uninstall hooks
-    Uninstall {
-        /// Provider IDs to uninstall (comma-separated: claude-code,cursor,gemini-cli,codex,opencode,openclaw) or "all" for all installed
+    /// Uninstall hooks from selected providers (keeps binary and config)
+    #[command(visible_alias = "uninstall")]
+    UninstallHooks,
+    /// Uninstall everything: remove all hooks, binary, config, and data
+    UninstallAll {
+        /// Skip confirmation prompt and proceed with uninstall
         #[arg(long, short)]
-        providers: Option<String>,
+        yes: bool,
     },
 
     /// List Hooks
@@ -168,6 +171,31 @@ fn open_team_dashboard() {
     }
 }
 
+/// Prompt the user for confirmation before running uninstall-all via CLI.
+/// Reads a single line from stdin and checks for "y" or "yes" (case-insensitive).
+///
+/// Parameters: None
+///
+/// Returns: `Ok(true)` if user confirmed, `Ok(false)` if declined, `Err` on IO failure.
+fn confirm_uninstall_cli() -> Result<bool> {
+    println!("This will permanently remove:");
+    println!("  - All hooks from all providers");
+    println!("  - Configuration and team settings");
+    println!("  - Debug logs and data directory");
+    println!("  - The viberails binary");
+    println!();
+    print!("Are you sure? [y/N]: ");
+    io::stdout().flush().context("Failed to flush stdout")?;
+
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .context("Failed to read confirmation input")?;
+
+    let answer = input.trim().to_lowercase();
+    Ok(answer == "y" || answer == "yes")
+}
+
 /// Initialize logging for callback commands with debug mode support.
 /// Checks config for debug flag and enables verbose logging if set.
 ///
@@ -199,8 +227,12 @@ fn init_callback_logging() -> Result<()> {
 ///
 /// Parameters: None
 ///
-/// Returns: Result indicating success or failure
-fn show_menu() -> Result<()> {
+/// Returns: A tuple of (`ran_uninstall_all`, result). The bool is always valid
+///   regardless of whether the action succeeded — even a *failed* uninstall-all
+///   may have partially cleaned up, so the caller should skip auto-upgrade either way.
+#[allow(clippy::too_many_lines)]
+fn show_menu() -> (bool, Result<()>) {
+    let mut ran_uninstall_all = false;
     loop {
         let options = get_menu_options();
         let items: Vec<(&str, Option<char>)> =
@@ -212,11 +244,16 @@ fn show_menu() -> Result<()> {
             Some("↑↓/keys navigate, Enter select, Esc cancel"),
             Some(PROJECT_VERSION),
         )
-        .context("Failed to read menu selection")?;
+        .context("Failed to read menu selection");
+
+        let selection_idx = match selection_idx {
+            Ok(s) => s,
+            Err(e) => return (ran_uninstall_all, Err(e)),
+        };
 
         // Handle cancellation (Esc) - exit the loop
         let Some(idx) = selection_idx else {
-            return Ok(());
+            return (ran_uninstall_all, Ok(()));
         };
 
         // Get the action for the selected index
@@ -233,17 +270,23 @@ fn show_menu() -> Result<()> {
                     wait_for_keypress();
                     continue;
                 }
-                install(None)?;
+                if let Err(e) = install(None) {
+                    return (ran_uninstall_all, Err(e));
+                }
                 open_team_dashboard();
-                return Ok(()); // Exit after successful installation
+                return (ran_uninstall_all, Ok(()));
             }
             Some(MenuAction::JoinTeam) => {
-                let url = text_prompt::<fn(&str) -> viberails::tui::ValidationResult>(
+                let url = match text_prompt::<fn(&str) -> viberails::tui::ValidationResult>(
                     "Enter the team URL:",
                     Some("Enter to submit, Esc to cancel"),
                     None,
                 )
-                .context("Failed to read team URL")?;
+                .context("Failed to read team URL")
+                {
+                    Ok(u) => u,
+                    Err(e) => return (ran_uninstall_all, Err(e)),
+                };
 
                 let Some(url) = url else {
                     continue; // User cancelled, show menu again
@@ -255,9 +298,11 @@ fn show_menu() -> Result<()> {
                     wait_for_keypress();
                     continue;
                 }
-                install(None)?;
+                if let Err(e) = install(None) {
+                    return (ran_uninstall_all, Err(e));
+                }
                 open_team_dashboard();
-                return Ok(()); // Exit after successful installation
+                return (ran_uninstall_all, Ok(()));
             }
             Some(MenuAction::InstallHooks) => {
                 if !is_authorized() {
@@ -268,18 +313,38 @@ fn show_menu() -> Result<()> {
                     );
                     continue;
                 }
-                install(None)?;
-                return Ok(()); // Exit after successful installation
+                if let Err(e) = install(None) {
+                    return (ran_uninstall_all, Err(e));
+                }
+                return (ran_uninstall_all, Ok(()));
             }
             Some(MenuAction::UninstallHooks) => {
                 let r = uninstall_hooks();
                 wait_for_keypress();
                 r
             }
-            Some(MenuAction::UninstallFully) => {
-                let r = uninstall(None);
-                wait_for_keypress();
-                r
+            Some(MenuAction::UninstallAll) => {
+                // Confirm before proceeding — uninstall-all is destructive and irreversible
+                let confirm = select_prompt(
+                    "Confirm Uninstall",
+                    vec!["Yes, uninstall everything", "Cancel"],
+                    Some("This will permanently remove all hooks, configuration, data, and the binary. This cannot be undone."),
+                )
+                .context("Failed to read confirmation");
+
+                match confirm {
+                    Ok(Some(0)) => {
+                        // User confirmed — proceed with uninstall
+                        let r = uninstall_all();
+                        ran_uninstall_all = true;
+                        wait_for_keypress();
+                        r
+                    }
+                    Ok(_) | Err(_) => {
+                        // User cancelled or pressed Esc — return to menu
+                        continue;
+                    }
+                }
             }
             Some(MenuAction::ListHooks) => {
                 list();
@@ -291,11 +356,13 @@ fn show_menu() -> Result<()> {
                 wait_for_keypress();
                 r
             }
-            Some(MenuAction::Quit) | None => return Ok(()),
+            Some(MenuAction::Quit) | None => return (ran_uninstall_all, Ok(())),
         };
 
-        // If an action failed, propagate the error
-        result?;
+        // If an action failed, propagate the error while preserving the flag
+        if let Err(e) = result {
+            return (ran_uninstall_all, Err(e));
+        }
     }
 }
 
@@ -316,6 +383,11 @@ fn main() -> Result<()> {
         )
     );
 
+    // Skip auto-upgrade after full uninstall — it would re-download the binary
+    // and recreate config files we just removed.
+    // Tracks both CLI (Command::UninstallAll) and TUI menu (show_menu returns true).
+    let mut is_uninstall_all = matches!(args.command, Some(Command::UninstallAll { .. }));
+
     if is_callback {
         init_callback_logging()?;
     } else {
@@ -323,9 +395,25 @@ fn main() -> Result<()> {
     }
 
     let ret = match args.command {
-        None => show_menu(),
+        None => {
+            // show_menu returns (bool, Result) — the flag is always valid even
+            // when the action failed, since a failed uninstall-all may have
+            // partially cleaned up and we must not re-download via upgrade poll.
+            let (did_uninstall_all, menu_result) = show_menu();
+            if did_uninstall_all {
+                is_uninstall_all = true;
+            }
+            menu_result
+        }
         Some(Command::Install { providers }) => install(providers.as_deref()),
-        Some(Command::Uninstall { providers }) => uninstall(providers.as_deref()),
+        Some(Command::UninstallHooks) => uninstall_hooks(),
+        Some(Command::UninstallAll { yes }) => {
+            if !yes && !confirm_uninstall_cli()? {
+                println!("Aborted.");
+                return Ok(());
+            }
+            uninstall_all()
+        }
         Some(Command::List) => {
             list();
             Ok(())
@@ -383,8 +471,10 @@ fn main() -> Result<()> {
     // This'll try to upgrade every x hours on exit (if enabled).
     // Skip for hook callbacks - they must exit quickly to avoid blocking
     // the AI tool (e.g., Claude Code waits for the hook process to exit).
+    // Skip after uninstall-all - would undo the cleanup by re-downloading the binary.
     //
     if !is_callback
+        && !is_uninstall_all
         && is_auto_upgrade_enabled()
         && let Err(e) = poll_upgrade()
     {
